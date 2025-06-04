@@ -1,0 +1,53 @@
+ZealotAI-Website-V2/
+├─ api/
+│  ├─ auth/
+│  │  └─ login.py
+│  ├─ diary/
+│  │  ├─ dashboard.py
+│  │  ├─ diary.py
+│  │  └─ drivers.py
+│  └─ index.py
+├─ app/
+│  ├─ diary/
+│  │  ├─ dashboard/
+│  │  │  └─ page.tsx
+│  │  ├─ drivers/
+│  │  │  └─ page.tsx
+│  │  ├─ layout.tsx
+│  │  └─ page.tsx
+│  ├─ home/
+│  │  └─ page.tsx
+│  ├─ login/
+│  │  └─ page.tsx
+│  ├─ page3/
+│  │  └─ layout.tsx
+│  ├─ globals.css
+│  ├─ layout.tsx
+│  └─ page.tsx
+├─ components/
+│  ├─ DriverItem.tsx
+│  ├─ Navbar.tsx
+│  └─ TaskBoard.tsx
+├─ docs/
+│  └─ tree.txt
+├─ public/
+│  ├─ data/
+│  │  ├─ drivers-yyyy-mm-dd.json
+│  │  ├─ user1.json
+│  │  └─ user2.json
+│  └─ Images/
+│     ├─ favicon.png
+│     └─ ZealotAi_Round.png
+├─ .gitattributes
+├─ .gitignore
+├─ next-env.d.ts
+├─ next.config.js
+├─ package-lock.json
+├─ package.json
+├─ postcss.config.js
+├─ README.md
+├─ requirements.txt
+├─ tailwind.config.js
+├─ tsconfig.json
+├─ ZZ Install.bat
+└─ ZZ Run Server.bat
