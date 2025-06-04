@@ -1,4 +1,4 @@
-ZealotAI-Website-V2/
+AetherFlow/
 ├─ api/
 │  ├─ auth/
 │  │  └─ login.py
@@ -28,18 +28,19 @@ ZealotAI-Website-V2/
 │  ├─ DriverItem.tsx
 │  ├─ Navbar.tsx
 │  └─ TaskBoard.tsx
-├─ docs/
-│  └─ tree.txt
 ├─ public/
 │  ├─ data/
-│  │  ├─ drivers-yyyy-mm-dd.json
-│  │  ├─ user1.json
-│  │  └─ user2.json
+│  ├─ docs/
+│  │  ├─ .$Diary.drawio.bkp
+│  │  ├─ Diary.drawio
+│  │  └─ tree.txt
 │  └─ Images/
 │     ├─ favicon.png
 │     └─ ZealotAi_Round.png
 ├─ .gitattributes
 ├─ .gitignore
+├─ .gitignore copy
+├─ LICENSE
 ├─ next-env.d.ts
 ├─ next.config.js
 ├─ package-lock.json
