@@ -1,12 +1,16 @@
 docker run --name task-management-postgres \
+  --network task-management-network \
   -e POSTGRES_USER=SYSTEM \
   -e POSTGRES_PASSWORD=SYSTEM \
   -e POSTGRES_DB=task_management \
   -p 5432:5432 \
+  -v postgres_data:/var/lib/postgresql/data \
   -d postgres
 
   docker run --name pgadmin \
   -e PGADMIN_DEFAULT_EMAIL=admin@admin.com \
   -e PGADMIN_DEFAULT_PASSWORD=admin \
+  -e PGADMIN_LISTEN_ADDRESS=0.0.0.0 \
   -p 8080:80 \
+  -v pgadmin_data:/var/lib/pgadmin \
   -d dpage/pgadmin4

@@ -1,6 +1,13 @@
 -- =============================================================================
--- COMPREHENSIVE INDEX STRATEGY FOR TASK MANAGEMENT SYSTEM
+-- FIXED COMPREHENSIVE INDEX STRATEGY FOR TASK MANAGEMENT SYSTEM
 -- =============================================================================
+
+-- =============================================================================
+-- PREREQUISITE: ENABLE REQUIRED EXTENSIONS
+-- =============================================================================
+
+-- Enable trigram extension for fuzzy text search (run as superuser)
+-- CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- =============================================================================
 -- FOUNDATION TABLES INDEXES
@@ -11,8 +18,9 @@ CREATE INDEX idx_customers_name ON customers(customer_name);
 CREATE INDEX idx_customers_status ON customers(status);
 CREATE INDEX idx_customers_is_company ON customers(is_company);
 CREATE INDEX idx_customers_created_at ON customers(created_at);
-CREATE INDEX idx_customers_status_company ON customers(status, is_company); -- Composite for filtering active companies
-CREATE INDEX idx_customers_name_trgm ON customers USING gin(customer_name gin_trgm_ops); -- For fuzzy text search (requires pg_trgm extension)
+CREATE INDEX idx_customers_status_company ON customers(status, is_company);
+-- Fuzzy text search index (requires pg_trgm extension)
+-- CREATE INDEX idx_customers_name_trgm ON customers USING gin(customer_name gin_trgm_ops);
 
 -- CONTACTS TABLE INDEXES
 CREATE INDEX idx_contacts_customer_id ON contacts(customer_id);
@@ -22,8 +30,9 @@ CREATE INDEX idx_contacts_whatsapp ON contacts(whatsapp_number);
 CREATE INDEX idx_contacts_status ON contacts(status);
 CREATE INDEX idx_contacts_primary ON contacts(is_primary_contact) WHERE is_primary_contact = true;
 CREATE INDEX idx_contacts_billing ON contacts(is_billing_contact) WHERE is_billing_contact = true;
-CREATE INDEX idx_contacts_customer_status ON contacts(customer_id, status); -- Composite for active contacts per customer
-CREATE INDEX idx_contacts_name_search ON contacts USING gin((first_name || ' ' || last_name) gin_trgm_ops); -- Full name search
+CREATE INDEX idx_contacts_customer_status ON contacts(customer_id, status);
+-- Full name search index (requires pg_trgm extension)
+-- CREATE INDEX idx_contacts_name_search ON contacts USING gin((first_name || ' ' || last_name) gin_trgm_ops);
 
 -- SITES TABLE INDEXES
 CREATE INDEX idx_sites_customer_id ON sites(customer_id);
@@ -31,8 +40,9 @@ CREATE INDEX idx_sites_active ON sites(is_active);
 CREATE INDEX idx_sites_type ON sites(site_type);
 CREATE INDEX idx_sites_city ON sites(city);
 CREATE INDEX idx_sites_postal_code ON sites(postal_code);
-CREATE INDEX idx_sites_customer_active ON sites(customer_id, is_active); -- Active sites per customer
-CREATE INDEX idx_sites_address_search ON sites USING gin((address_line1 || ' ' || COALESCE(address_line2, '') || ' ' || city) gin_trgm_ops); -- Address search
+CREATE INDEX idx_sites_customer_active ON sites(customer_id, is_active);
+-- Address search index (requires pg_trgm extension)
+-- CREATE INDEX idx_sites_address_search ON sites USING gin((address_line1 || ' ' || COALESCE(address_line2, '') || ' ' || city) gin_trgm_ops);
 
 -- EMPLOYEES TABLE INDEXES
 CREATE INDEX idx_employees_username ON employees(username);
@@ -40,14 +50,16 @@ CREATE INDEX idx_employees_email ON employees(email);
 CREATE INDEX idx_employees_role ON employees(role);
 CREATE INDEX idx_employees_status ON employees(status);
 CREATE INDEX idx_employees_last_login ON employees(last_login);
-CREATE INDEX idx_employees_role_status ON employees(role, status); -- Active employees by role
-CREATE INDEX idx_employees_name_search ON employees USING gin((name || ' ' || surname) gin_trgm_ops); -- Employee name search
+CREATE INDEX idx_employees_role_status ON employees(role, status);
+-- Employee name search index (requires pg_trgm extension)
+-- CREATE INDEX idx_employees_name_search ON employees USING gin((name || ' ' || surname) gin_trgm_ops);
 
 -- EQUIPMENT CATEGORIES TABLE INDEXES
 CREATE INDEX idx_equipment_categories_code ON equipment_categories(category_code);
 CREATE INDEX idx_equipment_categories_name ON equipment_categories(category_name);
 CREATE INDEX idx_equipment_categories_active ON equipment_categories(is_active);
-CREATE INDEX idx_equipment_categories_name_search ON equipment_categories USING gin(category_name gin_trgm_ops);
+-- Category name search index (requires pg_trgm extension)
+-- CREATE INDEX idx_equipment_categories_name_search ON equipment_categories USING gin(category_name gin_trgm_ops);
 
 -- EQUIPMENT PRICING TABLE INDEXES
 CREATE INDEX idx_equipment_pricing_category_id ON equipment_pricing(equipment_category_id);
@@ -55,8 +67,8 @@ CREATE INDEX idx_equipment_pricing_customer_type ON equipment_pricing(customer_t
 CREATE INDEX idx_equipment_pricing_effective_dates ON equipment_pricing(effective_from, effective_to);
 CREATE INDEX idx_equipment_pricing_active ON equipment_pricing(is_active);
 CREATE INDEX idx_equipment_pricing_category_customer_active ON equipment_pricing(equipment_category_id, customer_type, is_active);
-CREATE INDEX idx_equipment_pricing_current ON equipment_pricing(equipment_category_id, customer_type) 
-    WHERE is_active = true AND (effective_to IS NULL OR effective_to >= CURRENT_DATE);
+-- Removed problematic date comparison - use regular index and filter in queries
+CREATE INDEX idx_equipment_pricing_current ON equipment_pricing(equipment_category_id, customer_type, is_active, effective_from, effective_to);
 
 -- PRICE LIST TEMPLATES TABLE INDEXES
 CREATE INDEX idx_price_list_templates_active ON price_list_templates(is_active);
@@ -202,9 +214,9 @@ CREATE INDEX idx_drivers_taskboard_scheduled_date_status ON drivers_taskboard(sc
 -- Multi-column index for complete status tracking
 CREATE INDEX idx_drivers_taskboard_all_status ON drivers_taskboard(status_booked, status_driver, status_quality_control, status_whatsapp);
 
--- Customer and site search indexes
-CREATE INDEX idx_drivers_taskboard_customer_name ON drivers_taskboard USING gin(customer_name gin_trgm_ops);
-CREATE INDEX idx_drivers_taskboard_contact_name ON drivers_taskboard USING gin(contact_name gin_trgm_ops);
+-- Customer and site search indexes (requires pg_trgm extension)
+-- CREATE INDEX idx_drivers_taskboard_customer_name ON drivers_taskboard USING gin(customer_name gin_trgm_ops);
+-- CREATE INDEX idx_drivers_taskboard_contact_name ON drivers_taskboard USING gin(contact_name gin_trgm_ops);
 CREATE INDEX idx_drivers_taskboard_contact_phone ON drivers_taskboard(contact_phone);
 CREATE INDEX idx_drivers_taskboard_contact_whatsapp ON drivers_taskboard(contact_whatsapp);
 
@@ -298,37 +310,85 @@ CREATE INDEX idx_communication_tracking ON drivers_taskboard(status_whatsapp, co
 -- PARTIAL INDEXES FOR OPTIMIZATION
 -- =============================================================================
 
--- Active records only (common filtering)
+-- Active records only (common filtering) - Safe partial indexes with static values
 CREATE INDEX idx_customers_active_only ON customers(customer_name, created_at) WHERE status = 'active';
 CREATE INDEX idx_employees_active_only ON employees(role, name, surname) WHERE status = 'active';
 CREATE INDEX idx_equipment_categories_active_only ON equipment_categories(category_name, category_code) WHERE is_active = true;
 CREATE INDEX idx_sites_active_only ON sites(customer_id, site_name) WHERE is_active = true;
 
--- Incomplete tasks only
+-- Incomplete tasks only - Safe partial indexes with static values
 CREATE INDEX idx_user_taskboard_incomplete ON user_taskboard(assigned_to, priority, due_date) 
     WHERE status IN ('pending', 'in_progress');
 CREATE INDEX idx_drivers_taskboard_incomplete ON drivers_taskboard(assigned_to, scheduled_date, priority) 
     WHERE status NOT IN ('completed', 'cancelled');
 
--- Overdue tasks
-CREATE INDEX idx_user_taskboard_overdue ON user_taskboard(assigned_to, due_date) 
-    WHERE status IN ('pending', 'in_progress') AND due_date < CURRENT_DATE;
-CREATE INDEX idx_drivers_taskboard_overdue ON drivers_taskboard(assigned_to, scheduled_date) 
-    WHERE status NOT IN ('completed', 'cancelled') AND scheduled_date < CURRENT_DATE;
-
--- Recent interactions (last 30 days)
-CREATE INDEX idx_interactions_recent ON interactions(customer_id, interaction_type, created_at) 
-    WHERE created_at >= CURRENT_DATE - INTERVAL '30 days';
-
--- Verified equipment only
+-- Verified equipment only - Safe partial index with static values
 CREATE INDEX idx_drivers_task_equipment_verified_only ON drivers_task_equipment(drivers_task_id, equipment_category_id) 
     WHERE verified = true;
+
+-- REMOVED: All date-based partial indexes that used CURRENT_DATE or INTERVAL functions
+-- These caused "functions in index predicate must be marked IMMUTABLE" errors
+-- Use regular indexes and filter in application code or queries instead
+
+-- =============================================================================
+-- OPTIONAL: ENABLE TEXT SEARCH INDEXES (Run after enabling pg_trgm extension)
+-- =============================================================================
+
+/*
+-- To enable fuzzy text search, first run as superuser:
+-- CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Then uncomment and run these indexes:
+
+-- Customer name fuzzy search
+CREATE INDEX idx_customers_name_trgm ON customers USING gin(customer_name gin_trgm_ops);
+
+-- Contact name search
+CREATE INDEX idx_contacts_name_search ON contacts USING gin((first_name || ' ' || last_name) gin_trgm_ops);
+
+-- Site address search  
+CREATE INDEX idx_sites_address_search ON sites USING gin((address_line1 || ' ' || COALESCE(address_line2, '') || ' ' || city) gin_trgm_ops);
+
+-- Employee name search
+CREATE INDEX idx_employees_name_search ON employees USING gin((name || ' ' || surname) gin_trgm_ops);
+
+-- Equipment category name search
+CREATE INDEX idx_equipment_categories_name_search ON equipment_categories USING gin(category_name gin_trgm_ops);
+
+-- Driver taskboard customer/contact search
+CREATE INDEX idx_drivers_taskboard_customer_name ON drivers_taskboard USING gin(customer_name gin_trgm_ops);
+CREATE INDEX idx_drivers_taskboard_contact_name ON drivers_taskboard USING gin(contact_name gin_trgm_ops);
+*/
 
 -- =============================================================================
 -- MAINTENANCE NOTES
 -- =============================================================================
 
 /*
+FIXES APPLIED:
+
+1. IMMUTABLE FUNCTION ERROR:
+   - REMOVED all partial indexes using CURRENT_DATE, INTERVAL functions, or date arithmetic
+   - Converted problematic partial indexes to regular composite indexes
+   - Use application-level filtering for date-based conditions instead
+
+2. GIN_TRGM_OPS ERROR:
+   - Commented out all gin_trgm_ops indexes
+   - Added instructions to enable pg_trgm extension first
+   - Provided optional section to add text search indexes after extension is enabled
+
+3. PERFORMANCE OPTIMIZATIONS:
+   - Kept all essential indexes for query performance
+   - Maintained safe partial indexes for status-based filtering
+   - Preserved composite indexes for complex queries
+   - Removed date-based partial indexes to avoid IMMUTABLE errors
+
+INSTALLATION STEPS:
+
+1. Run the main index creation script (this file)
+2. Optionally enable pg_trgm extension: CREATE EXTENSION IF NOT EXISTS pg_trgm;
+3. Optionally run the commented text search indexes for fuzzy matching
+
 MAINTENANCE RECOMMENDATIONS:
 
 1. STATISTICS UPDATE:
@@ -345,16 +405,12 @@ MAINTENANCE RECOMMENDATIONS:
    - Consider partitioning for very large tables (audit_log, interactions)
    - Monitor slow queries and add indexes as needed
 
-4. TEXT SEARCH OPTIMIZATION:
-   - The gin_trgm_ops indexes require: CREATE EXTENSION pg_trgm;
-   - Consider full-text search indexes for large text fields if needed
-
-5. QUERY PATTERN ANALYSIS:
+4. QUERY PATTERN ANALYSIS:
    - Review query patterns quarterly
    - Add composite indexes for frequently used WHERE clauses
    - Consider covering indexes for read-heavy queries
 
-6. INDEX SIZE MONITORING:
+5. INDEX SIZE MONITORING:
    - Monitor total index size vs table size ratio
    - Aim for reasonable index overhead (typically 1-3x table size)
 */
