@@ -1,388 +1,469 @@
-// TASK MANAGEMENT SYSTEM - 3 LAYER ARCHITECTURE (UPDATED)
-// Layer 1: Interaction Recording
-// Layer 2: Component Storage (based on interaction type)
-// Layer 3: Taskboard Operations
+-- TASK MANAGEMENT SYSTEM - 3 LAYER ARCHITECTURE (UPDATED)
+-- Layer 1: Interaction Recording (Data Input)
+-- Layer 2: Component Storage (based on interaction type)
+-- Layer 3: Taskboard Operations (Workspaces - where all users collaborate)
 
-// =============================================================================
-// FOUNDATION TABLES
-// =============================================================================
+-- =============================================================================
+-- FOUNDATION TABLES
+-- =============================================================================
 
-// Customer Structure - Clean Methodology
-Table customers {
-  id integer [primary key, increment]
-  customer_name varchar(200) // "ABC Works" for companies, "John Smith" for individuals
-  is_company boolean [default: false]
-  
-  // Company-specific fields (null for individuals)
-  registration_number varchar(50)
-  vat_number varchar(20)
-  
-  // General business info (applies to both)
-  credit_limit decimal(10,2) [default: 0.00]
-  payment_terms varchar(100)
-  
-  status enum('active', 'inactive', 'blacklisted') [default: 'active']
-  notes text
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+-- Customer Structure - Clean Methodology
+CREATE TABLE customers (
+    id SERIAL PRIMARY KEY,
+    customer_name VARCHAR(200),
+    is_company BOOLEAN DEFAULT FALSE,
+    
+    -- Company-specific fields (null for individuals)
+    registration_number VARCHAR(50),
+    vat_number VARCHAR(20),
+    
+    -- General business info (applies to both)
+    credit_limit DECIMAL(10,2) DEFAULT 0.00,
+    payment_terms VARCHAR(100),
+    
+    status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'blacklisted')),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-Table contacts {
-  id integer [primary key, increment]
-  customer_id integer [ref: > customers.id]
-  
-  first_name varchar(100)
-  last_name varchar(100)
-  job_title varchar(100)
-  department varchar(100)
-  
-  phone_number varchar(20)
-  whatsapp_number varchar(20)
-  email varchar(150)
-  
-  is_primary_contact boolean [default: false]
-  is_billing_contact boolean [default: false]
-  
-  status enum('active', 'inactive') [default: 'active']
-  notes text
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+CREATE TABLE contacts (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id),
+    
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    job_title VARCHAR(100),
+    department VARCHAR(100),
+    
+    phone_number VARCHAR(20),
+    whatsapp_number VARCHAR(20),
+    email VARCHAR(150),
+    
+    is_primary_contact BOOLEAN DEFAULT FALSE,
+    is_billing_contact BOOLEAN DEFAULT FALSE,
+    
+    status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-Table sites {
-  id integer [primary key, increment]
-  customer_id integer [ref: > customers.id]
-  
-  site_name varchar(200) // "Sandton Site", "Head Office", "John's House"
-  site_code varchar(20) // Optional: "SAND01", "HO001"
-  
-  address_line1 varchar(200)
-  address_line2 varchar(200)
-  city varchar(100)
-  postal_code varchar(10)
-  gps_coordinates varchar(50)
-  
-  site_type enum('office', 'construction', 'warehouse', 'residential', 'other')
-  is_active boolean [default: true]
-  
-  // Enhanced site information for better delivery/collection support
-  site_contact_name varchar(100) // On-site contact person
-  site_contact_phone varchar(20) // On-site contact number
-  access_instructions text // "Gate code 1234", "Contact John on arrival"
-  delivery_instructions text // Specific delivery/access instructions
-  special_notes text
-  
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+CREATE TABLE sites (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id),
+    
+    site_name VARCHAR(200), -- "Sandton Site", "Head Office", "John's House"
+    site_code VARCHAR(20), -- Optional: "SAND01", "HO001"
+    
+    address_line1 VARCHAR(200),
+    address_line2 VARCHAR(200),
+    city VARCHAR(100),
+    postal_code VARCHAR(10),
+    gps_coordinates VARCHAR(50),
+    
+    site_type VARCHAR(50) CHECK (site_type IN ('office', 'construction', 'warehouse', 'residential', 'other')),
+    is_active BOOLEAN DEFAULT TRUE,
+    
+    -- Enhanced site information for better delivery/collection support
+    site_contact_name VARCHAR(100), -- On-site contact person
+    site_contact_phone VARCHAR(20), -- On-site contact number
+    access_instructions TEXT, -- "Gate code 1234", "Contact John on arrival"
+    delivery_instructions TEXT, -- Specific delivery/access instructions
+    special_notes TEXT,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-Table employees {
-  id integer [primary key, increment]
-  username varchar(50) [unique]
-  email varchar(150) [unique]
-  password_hash varchar(255)
-  role enum('owner', 'manager', 'accounts', 'buyer', 'hire_control', 'driver', 'employee')
-  name varchar(100)
-  surname varchar(100)
-  phone varchar(20)
-  status enum('active', 'inactive') [default: 'active']
-  last_login timestamp
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+CREATE TABLE employees (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE,
+    email VARCHAR(150) UNIQUE,
+    password_hash VARCHAR(255),
+    role VARCHAR(50) CHECK (role IN ('owner', 'manager', 'accounts', 'buyer', 'hire_control', 'driver', 'employee')),
+    name VARCHAR(100),
+    surname VARCHAR(100),
+    phone VARCHAR(20),
+    status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    last_login TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-Table equipment_categories {
-  id integer [primary key, increment]
-  category_name varchar(100) [unique] // "Angle Grinder Large"
-  category_code varchar(20) [unique] // "AG104" 
-  description text // "ANGLE GRINDER 230MM 2200W"
-  default_accessories text // "Comes with 5L petrol, 2 chisels"
-  specifications text // Technical specifications
-  is_active boolean [default: true]
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+CREATE TABLE equipment_categories (
+    id SERIAL PRIMARY KEY,
+    category_name VARCHAR(100) UNIQUE, -- "Angle Grinder Large"
+    category_code VARCHAR(20) UNIQUE, -- "AG104"
+    description TEXT, -- "ANGLE GRINDER 230MM 2200W"
+    default_accessories TEXT, -- "Comes with 5L petrol, 2 chisels"
+    specifications TEXT, -- Technical specifications
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-// NEW: Equipment Pricing Table
-Table equipment_pricing {
-  id integer [primary key, increment]
-  equipment_category_id integer [ref: > equipment_categories.id]
-  customer_type enum('individual', 'company', 'standard') [default: 'standard']
-  price_per_day decimal(10,2)
-  price_per_week decimal(10,2)
-  price_per_month decimal(10,2)
-  minimum_hire_period integer [default: 1] // Minimum days
-  deposit_amount decimal(10,2)
-  effective_from date
-  effective_to date
-  is_active boolean [default: true]
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+-- NEW: Equipment Pricing Table
+CREATE TABLE equipment_pricing (
+    id SERIAL PRIMARY KEY,
+    equipment_category_id INTEGER REFERENCES equipment_categories(id),
+    customer_type VARCHAR(50) DEFAULT 'standard' CHECK (customer_type IN ('individual', 'company', 'standard')),
+    price_per_day DECIMAL(10,2),
+    price_per_week DECIMAL(10,2),
+    price_per_month DECIMAL(10,2),
+    minimum_hire_period INTEGER DEFAULT 1, -- Minimum days
+    deposit_amount DECIMAL(10,2),
+    effective_from DATE,
+    effective_to DATE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-// NEW: Price List Templates
-Table price_list_templates {
-  id integer [primary key, increment]
-  template_name varchar(100)
-  equipment_category_filter text // JSON array of category IDs or "all"
-  customer_type enum('individual', 'company', 'both') [default: 'both']
-  include_pricing boolean [default: true]
-  include_specifications boolean [default: true]
-  is_active boolean [default: true]
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+-- NEW: Price List Templates
+CREATE TABLE price_list_templates (
+    id SERIAL PRIMARY KEY,
+    template_name VARCHAR(100),
+    equipment_category_filter TEXT, -- JSON array of category IDs or "all"
+    customer_type VARCHAR(50) DEFAULT 'both' CHECK (customer_type IN ('individual', 'company', 'both')),
+    include_pricing BOOLEAN DEFAULT TRUE,
+    include_specifications BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-// =============================================================================
-// LAYER 1: INTERACTION RECORDING (Universal Entry Point)
-// =============================================================================
+-- =============================================================================
+-- LAYER 1: INTERACTION RECORDING (Universal Entry Point - Data Input Layer)
+-- =============================================================================
 
-Table interactions {
-  id integer [primary key, increment]
-  customer_id integer [ref: > customers.id]
-  contact_id integer [ref: > contacts.id]
-  
-  employee_id integer [ref: > employees.id]
-  interaction_type enum('price_list', 'quote', 'application', 'order', 'off_hire', 'breakdown', 'statement', 'refund')
-  status enum('pending', 'processed', 'completed') [default: 'pending']
-  reference_number varchar(50) [unique]
-  contact_method enum('phone', 'whatsapp', 'email', 'walk_in')
-  notes text
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+CREATE TABLE interactions (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id),
+    contact_id INTEGER REFERENCES contacts(id),
+    
+    employee_id INTEGER REFERENCES employees(id),
+    interaction_type VARCHAR(50) CHECK (interaction_type IN ('price_list', 'quote', 'application', 'order', 'hire', 'off_hire', 'breakdown', 'statement', 'refund', 'coring', 'misc_task')),
+    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'processed', 'completed')),
+    reference_number VARCHAR(50) UNIQUE,
+    contact_method VARCHAR(50) CHECK (contact_method IN ('phone', 'whatsapp', 'email', 'walk_in')),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-// =============================================================================
-// LAYER 2: COMPONENT STORAGE (Based on Components.txt)
-// =============================================================================
+-- =============================================================================
+-- LAYER 2: COMPONENT STORAGE (Based on Components.txt)
+-- =============================================================================
 
-// Application Details Component (application interaction type)
-Table component_application_details {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  application_type enum('individual', 'company')
-  verification_status enum('pending', 'approved', 'rejected') [default: 'pending']
-  verification_notes text
-  documents_required text
-  verification_date date
-}
+-- Application Details Component (application interaction type)
+CREATE TABLE component_application_details (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    application_type VARCHAR(50) CHECK (application_type IN ('individual', 'company')),
+    verification_status VARCHAR(50) DEFAULT 'pending' CHECK (verification_status IN ('pending', 'approved', 'rejected')),
+    verification_notes TEXT,
+    documents_required TEXT,
+    verification_date DATE
+);
 
-// Equipment List Component (price_list, quote, order, off_hire, breakdown)
-Table component_equipment_list {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  equipment_category_id integer [ref: > equipment_categories.id]
-  quantity integer [default: 1]
-  // NEW: Hire duration tracking for quotes/orders
-  hire_duration integer // Duration in specified period units
-  hire_period_type enum('days', 'weeks', 'months') [default: 'days']
-  special_requirements text
-  accessories_needed text
-}
+-- Equipment List Component (price_list, quote, order, hire, off_hire, breakdown, coring)
+CREATE TABLE component_equipment_list (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    equipment_category_id INTEGER REFERENCES equipment_categories(id),
+    quantity INTEGER DEFAULT 1,
+    -- NEW: Hire duration tracking for quotes/orders/hires
+    hire_duration INTEGER, -- Duration in specified period units
+    hire_period_type VARCHAR(50) DEFAULT 'days' CHECK (hire_period_type IN ('days', 'weeks', 'months')),
+    special_requirements TEXT,
+    accessories_needed TEXT
+);
 
-// NEW: Quote Totals Component (quote interaction type)
-Table component_quote_totals {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  subtotal decimal(10,2) [default: 0.00]
-  tax_rate decimal(5,2) [default: 15.00] // Tax percentage
-  tax_amount decimal(10,2) [default: 0.00]
-  total_amount decimal(10,2) [default: 0.00]
-  currency varchar(3) [default: 'ZAR']
-  valid_until date // Quote expiry date
-  notes text
-  created_at timestamp [default: `now()`]
-}
+-- NEW: Quote Totals Component (quote interaction type)
+CREATE TABLE component_quote_totals (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    subtotal DECIMAL(10,2) DEFAULT 0.00,
+    tax_rate DECIMAL(5,2) DEFAULT 15.00, -- Tax percentage
+    tax_amount DECIMAL(10,2) DEFAULT 0.00,
+    total_amount DECIMAL(10,2) DEFAULT 0.00,
+    currency VARCHAR(3) DEFAULT 'ZAR',
+    valid_until DATE, -- Quote expiry date
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-// NEW: Refund Details Component (refund interaction type)
-Table component_refund_details {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  refund_type enum('full', 'partial', 'deposit_only') [default: 'partial']
-  refund_amount decimal(10,2)
-  refund_reason text
-  account_balance_before decimal(10,2)
-  account_balance_after decimal(10,2)
-  refund_method enum('cash', 'eft', 'credit_note') [default: 'eft']
-  bank_details text // Customer bank details for EFT
-  processed_by integer [ref: > employees.id]
-  processed_at timestamp
-}
+-- NEW: Refund Details Component (refund interaction type)
+CREATE TABLE component_refund_details (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    refund_type VARCHAR(50) DEFAULT 'partial' CHECK (refund_type IN ('full', 'partial', 'deposit_only')),
+    refund_amount DECIMAL(10,2),
+    refund_reason TEXT,
+    account_balance_before DECIMAL(10,2),
+    account_balance_after DECIMAL(10,2),
+    refund_method VARCHAR(50) DEFAULT 'eft' CHECK (refund_method IN ('cash', 'eft', 'credit_note')),
+    bank_details TEXT, -- Customer bank details for EFT
+    processed_by INTEGER REFERENCES employees(id),
+    processed_at TIMESTAMP
+);
 
-// Hire Details Component (order interaction type)
-Table component_hire_details {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  site_id integer [ref: > sites.id] // Which site for delivery/pickup
-  deliver_date date
-  deliver_time time
-  start_date date
-  start_time time
-  delivery_method enum('deliver', 'counter') [default: 'deliver']
-  special_instructions text
-}
+-- Hire Details Component (order, hire interaction types)
+CREATE TABLE component_hire_details (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    site_id INTEGER REFERENCES sites(id), -- Which site for delivery/pickup
+    deliver_date DATE,
+    deliver_time TIME,
+    start_date DATE,
+    start_time TIME,
+    delivery_method VARCHAR(50) DEFAULT 'deliver' CHECK (delivery_method IN ('deliver', 'counter')),
+    special_instructions TEXT
+);
 
-// Off-Hire Details Component (off_hire interaction type)
-Table component_offhire_details {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  site_id integer [ref: > sites.id] // Which site for collection
-  collect_date date
-  collect_time time
-  end_date date
-  end_time time
-  collection_method enum('collect', 'counter') [default: 'collect']
-  early_return boolean [default: false]
-  return_reason text
-}
+-- Off-Hire Details Component (off_hire interaction type)
+CREATE TABLE component_offhire_details (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    site_id INTEGER REFERENCES sites(id), -- Which site for collection
+    collect_date DATE,
+    collect_time TIME,
+    end_date DATE,
+    end_time TIME,
+    collection_method VARCHAR(50) DEFAULT 'collect' CHECK (collection_method IN ('collect', 'counter')),
+    early_return BOOLEAN DEFAULT FALSE,
+    return_reason TEXT
+);
 
-// Breakdown Details Component (breakdown interaction type)
-Table component_breakdown_details {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  site_id integer [ref: > sites.id] // Which site has the breakdown
-  breakdown_date date
-  breakdown_time time
-  resolution_type enum('swap', 'repair')
-  urgency enum('low', 'medium', 'high', 'critical') [default: 'medium']
-  issue_description text
-  equipment_condition text
-}
+-- Breakdown Details Component (breakdown interaction type)
+CREATE TABLE component_breakdown_details (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    site_id INTEGER REFERENCES sites(id), -- Which site has the breakdown
+    breakdown_date DATE,
+    breakdown_time TIME,
+    resolution_type VARCHAR(50) CHECK (resolution_type IN ('swap', 'repair')),
+    urgency VARCHAR(50) DEFAULT 'medium' CHECK (urgency IN ('low', 'medium', 'high', 'critical')),
+    issue_description TEXT,
+    equipment_condition TEXT
+);
 
-// NEW: Rental Agreement Component (order interaction type)
-Table component_rental_agreements {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  agreement_number varchar(50) [unique]
-  rental_start_date date
-  rental_end_date date
-  total_rental_days integer
-  daily_rate decimal(10,2)
-  weekly_rate decimal(10,2)
-  deposit_paid decimal(10,2)
-  insurance_required boolean [default: false]
-  terms_accepted boolean [default: false]
-  terms_accepted_at timestamp
-}
+-- NEW: Coring Details Component (coring interaction type)
+CREATE TABLE component_coring_details (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    site_id INTEGER REFERENCES sites(id), -- Which site needs coring
+    coring_date DATE,
+    coring_time TIME,
+    core_diameter VARCHAR(20), -- "100mm", "150mm", etc.
+    core_depth VARCHAR(20), -- "300mm", "500mm", etc.
+    number_of_cores INTEGER DEFAULT 1,
+    surface_type VARCHAR(100), -- "concrete", "asphalt", "brick", etc.
+    access_method VARCHAR(100), -- "handheld", "truck-mounted", etc.
+    special_requirements TEXT,
+    urgency VARCHAR(50) DEFAULT 'medium' CHECK (urgency IN ('low', 'medium', 'high', 'critical'))
+);
 
-// =============================================================================
-// LAYER 3: TASKBOARD OPERATIONS (Where Work Gets Done)
-// =============================================================================
+-- NEW: Misc Task Details Component (misc_task interaction type)
+CREATE TABLE component_misc_task_details (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    site_id INTEGER REFERENCES sites(id), -- Optional: Which site (if applicable)
+    task_date DATE,
+    task_time TIME,
+    task_description TEXT,
+    task_category VARCHAR(100), -- "spare_parts_purchase", "equipment_inspection", "delivery_only", etc.
+    estimated_duration INTEGER, -- minutes
+    special_requirements TEXT,
+    urgency VARCHAR(50) DEFAULT 'medium' CHECK (urgency IN ('low', 'medium', 'high', 'critical'))
+);
 
-// USER TASKBOARD (Current User + Accounts)
-Table user_taskboard {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  assigned_to integer [ref: > employees.id] // who owns this task
-  task_type enum('send_price_list', 'send_quote', 'process_application', 'send_statement', 'process_refund', 'general')
-  priority enum('low', 'medium', 'high', 'urgent') [default: 'medium']
-  status enum('pending', 'in_progress', 'completed', 'cancelled') [default: 'pending']
-  
-  title varchar(200)
-  description text
-  due_date date
-  
-  // NEW: Task dependency tracking
-  parent_task_id integer [ref: > user_taskboard.id]
-  
-  // Completion tracking
-  started_at timestamp
-  completed_at timestamp
-  completion_notes text
-  
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+-- NEW: Rental Agreement Component (order, hire interaction types)
+CREATE TABLE component_rental_agreements (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    agreement_number VARCHAR(50) UNIQUE,
+    rental_start_date DATE,
+    rental_end_date DATE,
+    total_rental_days INTEGER,
+    daily_rate DECIMAL(10,2),
+    weekly_rate DECIMAL(10,2),
+    deposit_paid DECIMAL(10,2),
+    insurance_required BOOLEAN DEFAULT FALSE,
+    terms_accepted BOOLEAN DEFAULT FALSE,
+    terms_accepted_at TIMESTAMP
+);
 
-// DRIVERS TASKBOARD (Shared by multiple drivers)
-Table drivers_taskboard {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  assigned_to integer [ref: > employees.id] // which driver
-  created_by integer [ref: > employees.id] // who created the task
-  
-  task_type enum('delivery', 'collection', 'swap', 'repair', 'coring', 'inspection', 'general_task')
-  priority enum('low', 'medium', 'high', 'urgent') [default: 'medium']
-  status enum('pending', 'assigned', 'in_progress', 'completed', 'cancelled') [default: 'pending']
-  
-  scheduled_date date
-  scheduled_time time
-  estimated_duration integer // minutes
-  
-  title varchar(200)
-  description text
-  
-  // NEW: Task dependency tracking
-  parent_task_id integer [ref: > drivers_taskboard.id]
-  
-  // Location details
-  address text
-  contact_person varchar(100)
-  contact_number varchar(20)
-  gps_coordinates varchar(50)
-  
-  // Equipment involved
-  equipment_notes text
-  
-  // Completion tracking
-  started_at timestamp
-  completed_at timestamp
-  actual_duration integer // minutes
-  completion_notes text
-  completion_photos text // file paths
-  
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-}
+-- =============================================================================
+-- LAYER 3: TASKBOARD OPERATIONS (Collaborative Workspaces)
+-- =============================================================================
 
-// Equipment assignments for driver tasks
-Table drivers_task_equipment {
-  id integer [primary key, increment]
-  drivers_task_id integer [ref: > drivers_taskboard.id]
-  equipment_category_id integer [ref: > equipment_categories.id]
-  quantity integer [default: 1]
-  purpose enum('deliver', 'collect', 'swap_out', 'swap_in', 'repair')
-  condition_notes text
-}
+-- USER TASKBOARD (Current User + Accounts) - Individual Task Management
+CREATE TABLE user_taskboard (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    assigned_to INTEGER REFERENCES employees(id), -- who owns this task
+    task_type VARCHAR(50) CHECK (task_type IN ('send_price_list', 'send_quote', 'process_application', 'send_statement', 'process_refund', 'general')),
+    priority VARCHAR(50) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
+    
+    title VARCHAR(200),
+    description TEXT,
+    due_date DATE,
+    
+    -- NEW: Task dependency tracking
+    parent_task_id INTEGER REFERENCES user_taskboard(id),
+    
+    -- Completion tracking
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    completion_notes TEXT,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-// =============================================================================
-// SUPPORTING TABLES
-// =============================================================================
+-- DRIVERS TASKBOARD (Shared Collaborative Workspace - All Users Can See & Work)
+-- This is where all driver-related tasks are managed collaboratively
+CREATE TABLE drivers_taskboard (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id), -- Links back to original data input
+    assigned_to INTEGER REFERENCES employees(id), -- which driver (nullable - starts unassigned in backlog)
+    created_by INTEGER REFERENCES employees(id), -- who created the task
+    
+    -- Task Classification
+    task_type VARCHAR(50) CHECK (task_type IN ('delivery', 'collection', 'swap', 'repair', 'coring', 'misc_task')),
+    priority VARCHAR(50) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+    status VARCHAR(50) DEFAULT 'backlog' CHECK (status IN ('backlog', 'driver_1', 'driver_2', 'driver_3', 'driver_4', 'completed', 'cancelled')),
+    
+    -- Scheduling Information
+    scheduled_date DATE,
+    scheduled_time TIME,
+    estimated_duration INTEGER, -- minutes
+    
+    -- Customer & Site Information (denormalized for easy access in workspace)
+    customer_name VARCHAR(200), -- From customers table
+    contact_name VARCHAR(200), -- From contacts table (first_name + last_name)
+    contact_phone VARCHAR(20), -- From contacts table
+    contact_whatsapp VARCHAR(20), -- From contacts table
+    site_address TEXT, -- Full formatted address from sites table
+    site_delivery_instructions TEXT, -- From sites table
+    
+    -- Task Status Tracking (Your Required Fields)
+    status_booked VARCHAR(3) DEFAULT 'no' CHECK (status_booked IN ('yes', 'no')), -- Has this been properly scheduled/booked
+    status_driver VARCHAR(3) DEFAULT 'no' CHECK (status_driver IN ('yes', 'no')), -- Has driver been assigned and confirmed
+    status_quality_control VARCHAR(3) DEFAULT 'no' CHECK (status_quality_control IN ('yes', 'no')), -- Has QC been done (equipment verified, etc.)
+    status_whatsapp VARCHAR(3) DEFAULT 'no' CHECK (status_whatsapp IN ('yes', 'no')), -- Has customer been notified via WhatsApp
+    
+    -- Equipment Notes (categorical, not unique items)
+    equipment_summary TEXT, -- "Rammer, Breaker, Poker" - summary for quick reference
+    equipment_verified BOOLEAN DEFAULT FALSE, -- All equipment items verified for QC
+     
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-// File attachments
-Table attachments {
-  id integer [primary key, increment]
-  interaction_id integer [ref: > interactions.id]
-  file_name varchar(255)
-  file_path varchar(500)
-  file_size integer
-  file_type varchar(100)
-  uploaded_by integer [ref: > employees.id]
-  description text
-  created_at timestamp [default: `now()`]
-}
+-- Equipment assignments for driver tasks (detailed breakdown from equipment list)
+CREATE TABLE drivers_task_equipment (
+    id SERIAL PRIMARY KEY,
+    drivers_task_id INTEGER REFERENCES drivers_taskboard(id),
+    equipment_category_id INTEGER REFERENCES equipment_categories(id),
+    quantity INTEGER DEFAULT 1,
+    purpose VARCHAR(50) CHECK (purpose IN ('deliver', 'collect', 'swap_out', 'swap_in', 'repair', 'coring')),
+    condition_notes TEXT,
+    verified BOOLEAN DEFAULT FALSE, -- For quality control
+    verified_by INTEGER REFERENCES employees(id),
+    verified_at TIMESTAMP
+);
 
-// Audit trail
-Table audit_log {
-  id integer [primary key, increment]
-  table_name varchar(50)
-  record_id integer
-  action enum('INSERT', 'UPDATE', 'DELETE')
-  old_values json
-  new_values json
-  changed_by integer [ref: > employees.id]
-  ip_address varchar(45)
-  user_agent text
-  created_at timestamp [default: `now()`]
-}
+-- NEW: Driver Task Status History (Track status changes for audit/workflow)
+CREATE TABLE drivers_task_status_history (
+    id SERIAL PRIMARY KEY,
+    drivers_task_id INTEGER REFERENCES drivers_taskboard(id),
+    from_status VARCHAR(50),
+    to_status VARCHAR(50),
+    changed_by INTEGER REFERENCES employees(id),
+    change_reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-// System settings
-Table system_settings {
-  id integer [primary key, increment]
-  setting_key varchar(100) [unique]
-  setting_value text
-  setting_type enum('string', 'number', 'boolean', 'json')
-  description text
-  updated_by integer [ref: > employees.id]
-  updated_at timestamp [default: `now()`]
-}
+-- NEW: Driver Assignment History (Track who worked on what)
+CREATE TABLE drivers_assignment_history (
+    id SERIAL PRIMARY KEY,
+    drivers_task_id INTEGER REFERENCES drivers_taskboard(id),
+    assigned_to INTEGER REFERENCES employees(id),
+    assigned_by INTEGER REFERENCES employees(id),
+    assignment_notes TEXT,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    unassigned_at TIMESTAMP
+);
+
+-- =============================================================================
+-- SUPPORTING TABLES
+-- =============================================================================
+
+-- File attachments
+CREATE TABLE attachments (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER REFERENCES interactions(id),
+    drivers_task_id INTEGER REFERENCES drivers_taskboard(id), -- NEW: Also link to driver tasks
+    file_name VARCHAR(255),
+    file_path VARCHAR(500),
+    file_size INTEGER,
+    file_type VARCHAR(100),
+    uploaded_by INTEGER REFERENCES employees(id),
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Audit trail
+CREATE TABLE audit_log (
+    id SERIAL PRIMARY KEY,
+    table_name VARCHAR(50),
+    record_id INTEGER,
+    action VARCHAR(10) CHECK (action IN ('INSERT', 'UPDATE', 'DELETE')),
+    old_values JSONB,
+    new_values JSONB,
+    changed_by INTEGER REFERENCES employees(id),
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- System settings
+CREATE TABLE system_settings (
+    id SERIAL PRIMARY KEY,
+    setting_key VARCHAR(100) UNIQUE,
+    setting_value TEXT,
+    setting_type VARCHAR(50) CHECK (setting_type IN ('string', 'number', 'boolean', 'json')),
+    description TEXT,
+    updated_by INTEGER REFERENCES employees(id),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =============================================================================
+-- TRIGGERS FOR UPDATED_AT TIMESTAMPS
+-- =============================================================================
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Apply to all tables with updated_at columns
+CREATE TRIGGER update_customers_updated_at BEFORE UPDATE ON customers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_contacts_updated_at BEFORE UPDATE ON contacts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_sites_updated_at BEFORE UPDATE ON sites FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_employees_updated_at BEFORE UPDATE ON employees FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_equipment_categories_updated_at BEFORE UPDATE ON equipment_categories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_equipment_pricing_updated_at BEFORE UPDATE ON equipment_pricing FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_price_list_templates_updated_at BEFORE UPDATE ON price_list_templates FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_interactions_updated_at BEFORE UPDATE ON interactions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_user_taskboard_updated_at BEFORE UPDATE ON user_taskboard FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_drivers_taskboard_updated_at BEFORE UPDATE ON drivers_taskboard FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_system_settings_updated_at BEFORE UPDATE ON system_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
