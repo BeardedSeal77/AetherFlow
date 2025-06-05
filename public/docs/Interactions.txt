@@ -1,0 +1,26 @@
+Interactions
+├─ Price/PriceList
+│  ├─ Customer Details
+│  └─ Equipment List
+├─ Quote
+│  ├─ Customer Details
+│  └─ Equipment List
+├─ Statement
+│  └─ Customer Details
+├─ Refund
+│  └─ Customer Details
+├─ Off-Hire
+│  ├─ Customer Details
+│  ├─ Equipment List
+│  └─ Off-Hire Date Details
+├─ Order/Hire
+│  ├─ Customer Details
+│  ├─ Equipment List
+│  └─ Hire Date Details
+├─ Breakdown
+│  ├─ Customer Details
+│  ├─ Equipment List
+│  └─ Breakdown Date Details
+└─ Application
+   ├─ Customer Details
+   └─ Application Details

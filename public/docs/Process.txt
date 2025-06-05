@@ -1,0 +1,50 @@
+This is a Task Management Diary.
+It will only be for internal use and for tracking and assigning tasks.
+
+The business is a Tool/Equipment hire company. the rent out equipment (either a customer comes in to collect it or the business delivers the equipment)
+The equipment also gets repaired in house.
+
+Employees:
+Hire Controller: Interacts with customers, sends quotes, creates hire contracts and manages what equipment is going where.
+Driver: Delivers, collects, swaps, services (on site, takes a mechanic with them) equipment, also runs errands like purchasing spares from local businesses.
+Mechanic: internal mechanic that services equipement *not a point of interest for this software
+Buyer: spares aquisition, creditors..., also acts as a manager
+Accounts: deals with customer account statements (balances), deptors, etc...
+
+A customer will contact the business and ask for something.
+
+Interactions
+├─ Price/PriceList
+│  └─ John Guy from ABC Works: "could you please send me a price list for all your compaction tools"
+├─ Quote
+│  └─ John Guy from ABC Works: "could I please get a quote to hire a rammer for 3 days"
+├─ Statement
+│  └─ John Guy from ABC Works: "I would like an account statement"
+├─ Refund
+│  └─ John Guy from ABC Works: "I would like the rest of my account to be refunded"
+├─ Off-Hire
+│  └─ John Guy from ABC Works: "I am done using the rammer on site 123 kimberly street"
+├─ Order/Hire
+│  └─ John Guy from ABC Works: "I would like to hire a rammer on site 123 kimberly street"
+├─ Breakdown
+│  └─ John Guy from ABC Works: "rammer broken on site 123 kimberly street"
+└─ Application
+   ├─ Bill Guy: "I would like to register myself to hire equipment from you"
+   └─ Bill Guy: "I would like to register my company ZXC Works to hire equipment from you"
+
+
+Notes:
+Customers-Company:
+can have multiple contacts
+can have multiple sites
+
+Customers-individual:
+can have multiple contacts
+can have multiple sites
+
+equipment:
+I do not want to work with unique equipment stock, just the generic catagory
+example:
+Correct: assign rammer to John Guy
+InCorrect: assign rammer R0001 to John Guy
+so I am only storing the catagory or generic.

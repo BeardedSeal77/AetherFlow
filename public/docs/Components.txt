@@ -1,0 +1,24 @@
+Components
+├─ Customer Details
+│  ├─ Customer Name
+│  ├─ Customer Surname
+│  ├─ Company Name
+│  ├─ Contact Number
+│  ├─ Whatsapp Number
+│  └─ Email
+├─ Application Details
+│  └─ Individual / Company Toggle
+├─ Hire Date Details
+│  ├─ Deliver Date & Time
+│  ├─ Start Date & Time
+│  └─ Deliver or Counter Toggle (FK this type of data) *I am either going to assign it to a driver or the front desk/counter (as in the customer will come fetch)
+├─ Off-Hire Date Details
+│  ├─ Collect Date & Time
+│  ├─ End Date & Time
+│  └─ Collect or Counter Toggle (FK this type of data)
+├─ Breakdown Date Details
+│  ├─ Date & Times
+│  └─ Swap or Repair Toggle
+├─ Equipment List
+   ├─ Tools
+   └─ Tool Accessories (some tools have accessories, so maybe a 2nd table for normilization, some tools have defaults for example, a generator comes with 5l petrol standard, a breaker comes with 2 chisels)

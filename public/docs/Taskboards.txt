@@ -1,0 +1,15 @@
+Taskboards
+├─ Current User
+│  ├─ Price Lists
+│  ├─ Refund
+│  └─ Application
+├─ Accounts
+│  ├─ Statement
+│  └─ Toilet & Huts *type of hire
+├─ Drivers Schedule
+   ├─ Delivery
+   ├─ Collection
+   ├─ Swap
+   ├─ Repair
+   ├─ Coring
+   └─ Task (example, go and buy spares)
