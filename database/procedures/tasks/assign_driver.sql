@@ -1,0 +1,2 @@
+-- used for when an employee working on the drivers taskboard moves a task between backlog, driver, counter
+-- I want completed to be a toggle, because I want a completed task to still belong to a driver.

@@ -1,0 +1,3 @@
+-- employee chooses off hire option on front end
+-- employee then fills in customer details
+-- employee then fills in the rest of the information needed by the off hire component

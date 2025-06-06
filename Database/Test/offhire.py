@@ -627,8 +627,8 @@ def main():
         
         # Process the off-hire request
         success = processor.process_offhire_request(
-            customer_id=1,  # ABC Construction Ltd
-            contact_id=1,   # John Guy
+            customer_id=1000,  # ABC Construction Ltd
+            contact_id=1007,   # John Guy
             site_name="sandton",  # Will match "Sandton Office Development"
             equipment_names=["Rammer", "Plate Compactor"],
             collect_date=collection_date,

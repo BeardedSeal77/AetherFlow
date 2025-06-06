@@ -1,0 +1,8 @@
+-- employee chooses application option on front end
+-- customer details defaults to: 
+-- INSERT INTO core.customers (
+-- id, customer_code, customer_name, is_company, credit_limit, payment_terms, 
+-- status, created_by, created_at
+-- ) VALUES ( 999, 'GENERIC', 'Generic Customer - Applications', false, 0.00, 'N/A', 
+-- 'active', 1, CURRENT_TIMESTAMP ); (created during database creation)
+-- employee then fills in the information needed by the application component

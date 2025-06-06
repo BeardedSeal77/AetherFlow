@@ -1,0 +1,50 @@
+database/
+├─ build/
+│  ├─ 00_docker_setup
+│  ├─ 01_database.sql
+│  ├─ 02_extensions.sql
+│  ├─ 03_schemas.sql
+│  ├─ 04_core_tables.sql
+│  ├─ 05_security_tables.sql
+│  ├─ 06_interaction_tables.sql
+│  ├─ 07_tasks_tables.sql
+│  ├─ 08_system_tables.sql
+│  ├─ 09_indexes.sql
+│  ├─ 10_permissions.sql
+│  ├─ 11_sample_data.sql
+│  ├─ 12_monitoring_views.sql
+│  ├─ 13_finilization.sql
+│  └─ Build Documentation.txt
+├─ monitor/
+│  ├─ drivers-taskboard.sql
+│  ├─ sample_data_validation.sql
+│  └─ user_taskboard.sql
+├─ procedures/
+│  ├─ customer_management/
+│  │  ├─ new_contact.sql
+│  │  ├─ new_customer.sql
+│  │  ├─ search_customer.sql
+│  │  └─ update_customer.sql
+│  ├─ interactions/
+│  │  ├─ application.sql
+│  │  ├─ breakdown.sql
+│  │  ├─ new_hire.sql
+│  │  ├─ off_hire.sql
+│  │  ├─ price_list.sql
+│  │  ├─ quote.sql
+│  │  ├─ refund.sql
+│  │  └─ statement.sql
+│  ├─ tasks/
+│  │  └─ driver_task.sql
+│  └─ procedures.txt
+├─ test/
+│  ├─ application.py
+│  ├─ breakdown.py
+│  ├─ newhire.py
+│  ├─ offhire.py
+│  ├─ pricelist.py
+│  ├─ Process Documentation.txt
+│  ├─ quote.py
+│  ├─ refund.py
+│  └─ statement.py
+└─ database.txt

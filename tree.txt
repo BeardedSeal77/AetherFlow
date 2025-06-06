@@ -1,8 +1,16 @@
 AetherFlow/
 ├─ api/
+│  ├─ __pycache__/
+│  │  └─ index.cpython-311.pyc
 │  ├─ auth/
+│  │  ├─ __pycache__/
+│  │  │  └─ login.cpython-311.pyc
 │  │  └─ login.py
 │  ├─ diary/
+│  │  ├─ __pycache__/
+│  │  │  ├─ dashboard.cpython-311.pyc
+│  │  │  ├─ diary.cpython-311.pyc
+│  │  │  └─ drivers.cpython-311.pyc
 │  │  ├─ dashboard.py
 │  │  ├─ diary.py
 │  │  └─ drivers.py
@@ -28,13 +36,54 @@ AetherFlow/
 │  ├─ DriverItem.tsx
 │  ├─ Navbar.tsx
 │  └─ TaskBoard.tsx
+├─ database/
+│  ├─ .old/
+│  │  ├─ constraints.sql
+│  │  ├─ database.sql
+│  │  ├─ generic_customer.sql
+│  │  ├─ Indexes.sql
+│  │  ├─ reference_system.sql
+│  │  ├─ sample_data.sql
+│  │  ├─ temp.sql
+│  │  └─ triggers.sql
+│  ├─ build/
+│  │  ├─ 00_docker_setup
+│  │  ├─ 01_database.sql
+│  │  ├─ 02_extensions.sql
+│  │  ├─ 03_schemas.sql
+│  │  ├─ 04_core_tables.sql
+│  │  ├─ 05_security_tables.sql
+│  │  ├─ 06_interaction_tables.sql
+│  │  ├─ 07_tasks_tables.sql
+│  │  ├─ 08_system_tables.sql
+│  │  ├─ 09_indexes.sql
+│  │  ├─ 10_permissions.sql
+│  │  └─ 11_sample_data.sql
+│  ├─ monitor/
+│  │  ├─ drivers-taskboard.sql
+│  │  ├─ sample_data_validation.sql
+│  │  └─ user_taskboard.sql
+│  └─ test/
+│     ├─ application.py
+│     ├─ breakdown.py
+│     ├─ newhire.py
+│     ├─ offhire.py
+│     ├─ pricelist.py
+│     ├─ Process Documentation.txt
+│     ├─ quote.py
+│     ├─ refund.py
+│     └─ statement.py
 ├─ public/
 │  ├─ data/
 │  ├─ docs/
 │  │  ├─ .$Diary.drawio.bkp
+│  │  ├─ Components.txt
+│  │  ├─ Diary Process Documentation.docx
 │  │  ├─ Diary.drawio
-│  │  └─ tree.txt
-│  └─ Images/
+│  │  ├─ Interactions.txt
+│  │  ├─ Process.txt
+│  │  └─ Taskboards.txt
+│  └─ images/
 │     ├─ favicon.png
 │     └─ ZealotAi_Round.png
 ├─ .gitattributes
@@ -43,12 +92,12 @@ AetherFlow/
 ├─ LICENSE
 ├─ next-env.d.ts
 ├─ next.config.js
-├─ package-lock.json
 ├─ package.json
 ├─ postcss.config.js
 ├─ README.md
 ├─ requirements.txt
 ├─ tailwind.config.js
+├─ tree.txt
 ├─ tsconfig.json
 ├─ ZZ Install.bat
 └─ ZZ Run Server.bat

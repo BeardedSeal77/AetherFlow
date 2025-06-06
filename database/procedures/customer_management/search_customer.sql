@@ -1,0 +1,4 @@
+-- searches the database for customers and contacts
+-- intended for new interactions, the employee will select a customer from a list box (searchable/filter from a text field)
+-- then the employee can select from a list of contacts under that customer
+-- then the employee can continue with creating the interaction
