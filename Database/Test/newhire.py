@@ -1,0 +1,682 @@
+#!/usr/bin/env python3
+"""
+Database Test Script: Driver Task Creation
+==========================================
+
+Test Scenario: ABC Construction Ltd (John Guy) wants to hire a rammer and plate compactor
+delivered to Sandton Office Development site
+
+This script simulates the complete process:
+1. Create hire interaction record (Layer 1)
+2. Store hire components (Layer 2) 
+3. Create driver taskboard entry (Layer 3)
+4. Create equipment assignments for the driver task
+
+Database Connection: PostgreSQL container on localhost:5432
+"""
+
+import psycopg2
+import psycopg2.extras
+from datetime import datetime, date, time
+import json
+from typing import Dict, List, Optional, Tuple
+
+# Database connection configuration
+DB_CONFIG = {
+    'host': 'localhost',
+    'port': 5432,
+    'database': 'task_management',
+    'user': 'SYSTEM',
+    'password': 'SYSTEM'
+}
+
+class DriverTaskProcessor:
+    def __init__(self):
+        self.conn = None
+        self.cursor = None
+        
+    def connect(self):
+        """Establish database connection"""
+        try:
+            self.conn = psycopg2.connect(**DB_CONFIG)
+            self.cursor = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            print("✅ Successfully connected to task_management database")
+            return True
+        except psycopg2.Error as e:
+            print(f"❌ Database connection failed: {e}")
+            return False
+    
+    def disconnect(self):
+        """Close database connection"""
+        if self.cursor:
+            self.cursor.close()
+        if self.conn:
+            self.conn.close()
+        print("📴 Database connection closed")
+    
+    def get_customer_by_id(self, customer_id: int) -> Optional[Dict]:
+        """Get customer by ID"""
+        try:
+            query = "SELECT * FROM customers WHERE id = %s AND status = 'active'"
+            self.cursor.execute(query, (customer_id,))
+            customer = self.cursor.fetchone()
+            
+            if customer:
+                print(f"✅ Found customer: {customer['customer_name']} (ID: {customer['id']})")
+                return dict(customer)
+            else:
+                print(f"❌ Customer ID {customer_id} not found or inactive")
+                return None
+                
+        except psycopg2.Error as e:
+            print(f"❌ Error finding customer: {e}")
+            return None
+    
+    def get_contact_by_id(self, contact_id: int) -> Optional[Dict]:
+        """Get contact by ID"""
+        try:
+            query = "SELECT * FROM contacts WHERE id = %s AND status = 'active'"
+            self.cursor.execute(query, (contact_id,))
+            contact = self.cursor.fetchone()
+            
+            if contact:
+                contact_name = f"{contact['first_name']} {contact['last_name']}"
+                print(f"✅ Found contact: {contact_name} (ID: {contact['id']})")
+                return dict(contact)
+            else:
+                print(f"❌ Contact ID {contact_id} not found or inactive")
+                return None
+                
+        except psycopg2.Error as e:
+            print(f"❌ Error finding contact: {e}")
+            return None
+    
+    def get_site_by_name(self, customer_id: int, site_name: str) -> Optional[Dict]:
+        """Get site by name for specific customer"""
+        try:
+            query = """
+                SELECT * FROM sites 
+                WHERE customer_id = %s 
+                AND LOWER(site_name) LIKE LOWER(%s)
+                AND is_active = true
+                ORDER BY site_name
+                LIMIT 1
+            """
+            self.cursor.execute(query, (customer_id, f'%{site_name}%'))
+            site = self.cursor.fetchone()
+            
+            if site:
+                print(f"✅ Found site: {site['site_name']} (ID: {site['id']})")
+                print(f"   Address: {site['address_line1']}, {site['city']}")
+                return dict(site)
+            else:
+                print(f"❌ Site '{site_name}' not found for customer {customer_id}")
+                return None
+                
+        except psycopg2.Error as e:
+            print(f"❌ Error finding site: {e}")
+            return None
+    
+    def get_equipment_by_names(self, equipment_names: List[str]) -> List[Dict]:
+        """Get equipment categories by names"""
+        try:
+            placeholders = ','.join(['%s'] * len(equipment_names))
+            query = f"""
+                SELECT * FROM equipment_categories 
+                WHERE LOWER(category_name) = ANY(ARRAY[{','.join(['LOWER(%s)'] * len(equipment_names))}])
+                AND is_active = true
+                ORDER BY category_name
+            """
+            self.cursor.execute(query, equipment_names)
+            equipment_list = self.cursor.fetchall()
+            
+            print(f"✅ Found {len(equipment_list)} equipment items:")
+            for eq in equipment_list:
+                print(f"   - {eq['category_name']} ({eq['category_code']})")
+            
+            return [dict(eq) for eq in equipment_list]
+            
+        except psycopg2.Error as e:
+            print(f"❌ Error finding equipment: {e}")
+            return []
+    
+    def get_employee_by_role(self, role: str) -> Optional[Dict]:
+        """Find an active employee by role"""
+        try:
+            query = """
+                SELECT * FROM employees 
+                WHERE role = %s AND status = 'active'
+                ORDER BY name
+                LIMIT 1
+            """
+            self.cursor.execute(query, (role,))
+            employee = self.cursor.fetchone()
+            
+            if employee:
+                print(f"✅ Found {role}: {employee['name']} {employee['surname']} (ID: {employee['id']})")
+                return dict(employee)
+            else:
+                print(f"❌ No active {role} found")
+                return None
+                
+        except psycopg2.Error as e:
+            print(f"❌ Error finding employee: {e}")
+            return None
+    
+    def generate_reference_number(self, interaction_type: str) -> str:
+        """Generate a unique reference number using the new system"""
+        try:
+            # First check if the helper functions exist
+            try:
+                # Test if the function exists
+                self.cursor.execute("SELECT get_prefix_for_interaction('hire')")
+                test_result = self.cursor.fetchone()
+                print(f"🔍 Helper function test result: {test_result}")
+            except psycopg2.Error as func_error:
+                print(f"⚠️ Helper functions not available: {func_error}")
+                # Fall back to manual method
+                return self.generate_reference_number_manual(interaction_type)
+            
+            # Get prefix from database lookup table
+            prefix_query = "SELECT get_prefix_for_interaction(%s)"
+            self.cursor.execute(prefix_query, (interaction_type,))
+            result = self.cursor.fetchone()
+            
+            print(f"🔍 Prefix query result: {result}")
+            print(f"🔍 Result type: {type(result)}")
+            
+            if result:
+                if isinstance(result, dict):
+                    # RealDictCursor returns dict-like objects
+                    prefix = list(result.values())[0]
+                elif isinstance(result, (list, tuple)):
+                    # Regular cursor returns tuples
+                    prefix = result[0]
+                else:
+                    # Single value
+                    prefix = result
+            else:
+                prefix = 'IN'  # Fallback default
+            
+            print(f"🏷️ Using prefix: {prefix}")
+            
+            # Get date part (YYMMDD format)
+            date_part = datetime.now().strftime('%y%m%d')
+            
+            # Get next sequence number for today
+            seq_query = "SELECT get_next_sequence_for_date(%s, %s)"
+            self.cursor.execute(seq_query, (prefix, date_part))
+            sequence_result = self.cursor.fetchone()
+            
+            print(f"🔍 Sequence query result: {sequence_result}")
+            
+            if sequence_result:
+                if isinstance(sequence_result, dict):
+                    sequence = list(sequence_result.values())[0]
+                elif isinstance(sequence_result, (list, tuple)):
+                    sequence = sequence_result[0]
+                else:
+                    sequence = sequence_result
+            else:
+                sequence = 1  # Fallback
+            
+            print(f"🔢 Using sequence: {sequence}")
+            
+            # Format reference number: PPYYMMDDNNN
+            reference = f"{prefix}{date_part}{sequence:03d}"
+            
+            print(f"📝 Generated reference number: {reference}")
+            print(f"   Format: {prefix}(prefix) + {date_part}(date) + {sequence:03d}(sequence)")
+            return reference
+            
+        except Exception as e:
+            print(f"❌ Error generating reference number: {e}")
+            print(f"🔄 Falling back to manual generation")
+            # Fallback to manual generation
+            return self.generate_reference_number_manual(interaction_type)
+    
+    def generate_reference_number_manual(self, interaction_type: str) -> str:
+        """Manual reference number generation as fallback"""
+        try:
+            # Manual prefix mapping
+            prefix_map = {
+                'hire': 'HR',
+                'order': 'OR',
+                'quote': 'QT',
+                'price_list': 'PL',
+                'off_hire': 'OH',
+                'breakdown': 'BD',
+                'statement': 'ST',
+                'refund': 'RF',
+                'application': 'AP',
+                'coring': 'CR',
+                'misc_task': 'MT'
+            }
+            
+            prefix = prefix_map.get(interaction_type, 'IN')
+            
+            # Get date part
+            date_part = datetime.now().strftime('%y%m%d')
+            
+            # Count interactions today for sequence
+            query = """
+                SELECT COUNT(*) as count FROM interactions 
+                WHERE DATE(created_at) = CURRENT_DATE
+                AND reference_number LIKE %s
+            """
+            pattern = f"{prefix}{date_part}%"
+            self.cursor.execute(query, (pattern,))
+            result = self.cursor.fetchone()
+            
+            if result:
+                if isinstance(result, dict):
+                    count = result['count']
+                else:
+                    count = result[0]
+            else:
+                count = 0
+            
+            sequence = count + 1
+            reference = f"{prefix}{date_part}{sequence:03d}"
+            
+            print(f"📝 Generated reference number (manual): {reference}")
+            return reference
+            
+        except Exception as e:
+            print(f"❌ Manual generation also failed: {e}")
+            # Ultimate fallback
+            today = datetime.now().strftime('%y%m%d')
+            fallback = f"HR{today}001"
+            print(f"🆘 Using ultimate fallback: {fallback}")
+            return fallback
+    
+    def create_hire_interaction(self, customer: Dict, contact: Dict, employee: Dict) -> Optional[int]:
+        """Create the main hire interaction record (Layer 1)"""
+        try:
+            reference_number = self.generate_reference_number('hire')
+            
+            insert_query = """
+                INSERT INTO interactions (
+                    customer_id, contact_id, employee_id, interaction_type, 
+                    status, reference_number, contact_method, notes, created_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                ) RETURNING id
+            """
+            
+            contact_name = f"{contact['first_name']} {contact['last_name']}"
+            notes = f"Equipment hire request from {contact_name} at {customer['customer_name']} - Rammer and Plate Compactor delivery to Sandton site"
+            
+            values = (
+                customer['id'],
+                contact['id'], 
+                employee['id'],
+                'hire',
+                'pending',
+                reference_number,
+                'phone',
+                notes,
+                datetime.now()
+            )
+            
+            self.cursor.execute(insert_query, values)
+            interaction_id = self.cursor.fetchone()['id']
+            
+            print(f"✅ Created hire interaction (ID: {interaction_id}, Ref: {reference_number})")
+            return interaction_id
+            
+        except psycopg2.Error as e:
+            print(f"❌ Error creating hire interaction: {e}")
+            return None
+    
+    def create_equipment_list_components(self, interaction_id: int, equipment_list: List[Dict]) -> bool:
+        """Create equipment list component records (Layer 2)"""
+        try:
+            insert_query = """
+                INSERT INTO component_equipment_list (
+                    interaction_id, equipment_category_id, quantity, 
+                    hire_duration, hire_period_type, special_requirements
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            
+            for equipment in equipment_list:
+                values = (
+                    interaction_id,
+                    equipment['id'],
+                    1,  # Quantity
+                    3,  # Duration (example: 3 days)
+                    'days',  # Period type
+                    f"Standard hire - {equipment['category_name']}"
+                )
+                self.cursor.execute(insert_query, values)
+            
+            print(f"✅ Created {len(equipment_list)} equipment list component records")
+            return True
+            
+        except psycopg2.Error as e:
+            print(f"❌ Error creating equipment list components: {e}")
+            return False
+    
+    def create_hire_details_component(self, interaction_id: int, site: Dict) -> bool:
+        """Create hire details component record (Layer 2)"""
+        try:
+            # Set delivery for tomorrow at 9 AM
+            tomorrow = date.today().replace(day=date.today().day + 1)
+            delivery_time = time(9, 0)  # 9:00 AM
+            
+            insert_query = """
+                INSERT INTO component_hire_details (
+                    interaction_id, site_id, deliver_date, deliver_time,
+                    start_date, start_time, delivery_method, special_instructions
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            values = (
+                interaction_id,
+                site['id'],
+                tomorrow,
+                delivery_time,
+                tomorrow,
+                delivery_time,
+                'deliver',
+                f"Delivery to {site['site_name']} - {site.get('delivery_instructions', 'Standard delivery')}"
+            )
+            
+            self.cursor.execute(insert_query, values)
+            print(f"✅ Created hire details component - delivery scheduled for {tomorrow} at {delivery_time}")
+            return True
+            
+        except psycopg2.Error as e:
+            print(f"❌ Error creating hire details component: {e}")
+            return False
+    
+    def create_drivers_taskboard_entry(self, interaction_id: int, customer: Dict, contact: Dict, 
+                                     site: Dict, equipment_list: List[Dict], created_by: Dict) -> Optional[int]:
+        """Create drivers taskboard entry (Layer 3)"""
+        try:
+            # Tomorrow's delivery
+            tomorrow = date.today().replace(day=date.today().day + 1)
+            scheduled_time = time(9, 0)
+            
+            # Format contact info
+            contact_name = f"{contact['first_name']} {contact['last_name']}"
+            site_address = f"{site['address_line1']}"
+            if site['address_line2']:
+                site_address += f", {site['address_line2']}"
+            site_address += f", {site['city']}"
+            
+            # Equipment summary
+            equipment_summary = ", ".join([eq['category_name'] for eq in equipment_list])
+            
+            insert_query = """
+                INSERT INTO drivers_taskboard (
+                    interaction_id, created_by, task_type, priority, status,
+                    scheduled_date, scheduled_time, estimated_duration,
+                    customer_name, contact_name, contact_phone, contact_whatsapp,
+                    site_address, site_delivery_instructions,
+                    status_booked, status_driver, status_quality_control, status_whatsapp,
+                    equipment_summary, equipment_verified, created_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                ) RETURNING id
+            """
+            
+            values = (
+                interaction_id,
+                created_by['id'],
+                'delivery',
+                'medium',
+                'backlog',  # Starts in backlog
+                tomorrow,
+                scheduled_time,
+                90,  # 90 minutes estimated duration
+                customer['customer_name'],
+                contact_name,
+                contact.get('phone_number'),
+                contact.get('whatsapp_number'),
+                site_address,
+                site.get('delivery_instructions', 'Standard delivery protocol'),
+                'yes',  # Already booked since we have delivery date
+                'no',   # No driver assigned yet
+                'no',   # Quality control not done yet
+                'no',   # WhatsApp notification not sent yet
+                equipment_summary,
+                False,  # Equipment not verified yet
+                datetime.now()
+            )
+            
+            self.cursor.execute(insert_query, values)
+            drivers_task_id = self.cursor.fetchone()['id']
+            
+            print(f"✅ Created drivers taskboard entry (ID: {drivers_task_id})")
+            print(f"   Task: Delivery to {customer['customer_name']}")
+            print(f"   Scheduled: {tomorrow} at {scheduled_time}")
+            print(f"   Equipment: {equipment_summary}")
+            
+            return drivers_task_id
+            
+        except psycopg2.Error as e:
+            print(f"❌ Error creating drivers taskboard entry: {e}")
+            return None
+    
+    def create_driver_task_equipment(self, drivers_task_id: int, equipment_list: List[Dict]) -> bool:
+        """Create driver task equipment assignments"""
+        try:
+            insert_query = """
+                INSERT INTO drivers_task_equipment (
+                    drivers_task_id, equipment_category_id, quantity, 
+                    purpose, condition_notes, verified
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            
+            for equipment in equipment_list:
+                values = (
+                    drivers_task_id,
+                    equipment['id'],
+                    1,  # Quantity
+                    'deliver',  # Purpose
+                    f"Standard condition - {equipment['category_name']} ready for delivery",
+                    False  # Not verified yet
+                )
+                self.cursor.execute(insert_query, values)
+            
+            print(f"✅ Created {len(equipment_list)} driver task equipment assignments")
+            return True
+            
+        except psycopg2.Error as e:
+            print(f"❌ Error creating driver task equipment: {e}")
+            return False
+    
+    def process_hire_request(self, customer_id: int, contact_id: int, site_name: str, equipment_names: List[str]):
+        """Main method to process the complete hire request"""
+        print("\n🚀 STARTING HIRE REQUEST PROCESS")
+        print("=" * 60)
+        print(f"Customer ID: {customer_id}")
+        print(f"Contact ID: {contact_id}")
+        print(f"Site: {site_name}")
+        print(f"Equipment: {', '.join(equipment_names)}")
+        
+        # Step 1: Get customer, contact, and site data
+        print("\n📋 STEP 1: Data Verification")
+        customer = self.get_customer_by_id(customer_id)
+        if not customer:
+            print("❌ Process terminated: Customer not found")
+            return False
+        
+        contact = self.get_contact_by_id(contact_id)
+        if not contact:
+            print("❌ Process terminated: Contact not found")
+            return False
+        
+        site = self.get_site_by_name(customer_id, site_name)
+        if not site:
+            print("❌ Process terminated: Site not found")
+            return False
+        
+        equipment_list = self.get_equipment_by_names(equipment_names)
+        if not equipment_list:
+            print("❌ Process terminated: No equipment found")
+            return False
+        
+        # Step 2: Get hire controller (who processes the request)
+        print("\n👤 STEP 2: Employee Assignment")
+        employee = self.get_employee_by_role('hire_control')
+        if not employee:
+            print("❌ Process terminated: No hire controller available")
+            return False
+        
+        # Step 3: Create hire interaction (Layer 1)
+        print("\n📝 STEP 3: Creating Hire Interaction (Layer 1)")
+        interaction_id = self.create_hire_interaction(customer, contact, employee)
+        if not interaction_id:
+            print("❌ Process terminated: Failed to create interaction")
+            return False
+        
+        # Step 4: Create equipment list components (Layer 2)
+        print("\n📦 STEP 4: Creating Equipment Components (Layer 2)")
+        if not self.create_equipment_list_components(interaction_id, equipment_list):
+            print("❌ Warning: Failed to create equipment components")
+        
+        # Step 5: Create hire details component (Layer 2)
+        print("\n🏗️ STEP 5: Creating Hire Details Component (Layer 2)")
+        if not self.create_hire_details_component(interaction_id, site):
+            print("❌ Warning: Failed to create hire details")
+        
+        # Step 6: Create drivers taskboard entry (Layer 3)
+        print("\n🚛 STEP 6: Creating Driver Task (Layer 3)")
+        drivers_task_id = self.create_drivers_taskboard_entry(
+            interaction_id, customer, contact, site, equipment_list, employee
+        )
+        if not drivers_task_id:
+            print("❌ Warning: Failed to create driver task")
+            return False
+        
+        # Step 7: Create driver task equipment assignments
+        print("\n🔧 STEP 7: Creating Equipment Assignments")
+        if not self.create_driver_task_equipment(drivers_task_id, equipment_list):
+            print("❌ Warning: Failed to create equipment assignments")
+        
+        # Commit all changes
+        try:
+            self.conn.commit()
+            print("\n✅ PROCESS COMPLETED SUCCESSFULLY")
+            print(f"✅ All database changes committed")
+            print(f"✅ Interaction ID: {interaction_id}")
+            print(f"✅ Driver Task ID: {drivers_task_id}")
+            
+            # Display the created task
+            self.display_created_driver_task(drivers_task_id)
+            
+            return True
+            
+        except psycopg2.Error as e:
+            print(f"❌ Error committing changes: {e}")
+            self.conn.rollback()
+            return False
+    
+    def display_created_driver_task(self, drivers_task_id: int):
+        """Display the created driver task details"""
+        try:
+            query = """
+                SELECT 
+                    dt.*,
+                    i.reference_number,
+                    STRING_AGG(ec.category_name, ', ') as equipment_names
+                FROM drivers_taskboard dt
+                JOIN interactions i ON dt.interaction_id = i.id
+                LEFT JOIN drivers_task_equipment dte ON dt.id = dte.drivers_task_id
+                LEFT JOIN equipment_categories ec ON dte.equipment_category_id = ec.id
+                WHERE dt.id = %s
+                GROUP BY dt.id, i.reference_number
+            """
+            
+            self.cursor.execute(query, (drivers_task_id,))
+            task = self.cursor.fetchone()
+            
+            if task:
+                print("\n" + "="*60)
+                print("CREATED DRIVER TASK DETAILS:")
+                print("="*60)
+                print(f"Task ID: {task['id']}")
+                print(f"Reference: {task['reference_number']}")
+                print(f"Customer: {task['customer_name']}")
+                print(f"Contact: {task['contact_name']}")
+                print(f"Phone: {task['contact_phone']}")
+                print(f"WhatsApp: {task['contact_whatsapp']}")
+                print(f"Site: {task['site_address']}")
+                print(f"Equipment: {task['equipment_names']}")
+                print(f"Scheduled: {task['scheduled_date']} at {task['scheduled_time']}")
+                print(f"Status: {task['status']}")
+                print(f"Progress Indicators:")
+                print(f"  📅 Booked: {task['status_booked']}")
+                print(f"  🚛 Driver: {task['status_driver']}")
+                print(f"  ✅ Quality Control: {task['status_quality_control']}")
+                print(f"  📱 WhatsApp: {task['status_whatsapp']}")
+                print(f"Equipment Verified: {task['equipment_verified']}")
+                print("="*60)
+                
+        except psycopg2.Error as e:
+            print(f"❌ Error displaying task details: {e}")
+
+
+def main():
+    """Main execution function"""
+    print("🎯 TASK MANAGEMENT SYSTEM - DRIVER TASK CREATION TEST")
+    print("📋 Scenario: ABC Construction Ltd (John Guy) hires Rammer + Plate Compactor")
+    print("🏗️ Delivery to: Sandton Office Development")
+    print("🗄️ Database: task_management @ localhost:5432")
+    
+    processor = DriverTaskProcessor()
+    
+    try:
+        # Connect to database
+        if not processor.connect():
+            return
+        
+        # Process the hire request
+        success = processor.process_hire_request(
+            customer_id=1,  # ABC Construction Ltd
+            contact_id=1,   # John Guy
+            site_name="sandton",  # Will match "Sandton Office Development"
+            equipment_names=["Rammer", "Plate Compactor"]
+        )
+        
+        if success:
+            print("\n🎉 Test completed successfully!")
+            print("\n📊 VERIFICATION QUERIES:")
+            print("You can verify the data was created by running these SQL queries:")
+            print("\n-- View the hire interaction with new reference format:")
+            print("SELECT id, reference_number, interaction_type, status, created_at")
+            print("FROM interactions WHERE interaction_type = 'hire' ORDER BY created_at DESC LIMIT 1;")
+            print("\n-- View the driver task:")
+            print("SELECT id, customer_name, equipment_summary, status, scheduled_date")
+            print("FROM drivers_taskboard ORDER BY created_at DESC LIMIT 1;")
+            print("\n-- View equipment assignments:")
+            print("SELECT dt.customer_name, ec.category_name, dte.purpose, dte.verified")
+            print("FROM drivers_taskboard dt")
+            print("JOIN drivers_task_equipment dte ON dt.id = dte.drivers_task_id")
+            print("JOIN equipment_categories ec ON dte.equipment_category_id = ec.id")
+            print("ORDER BY dt.created_at DESC;")
+            print("\n-- View hire details:")
+            print("SELECT i.reference_number, hd.deliver_date, hd.deliver_time, s.site_name")
+            print("FROM interactions i")
+            print("JOIN component_hire_details hd ON i.id = hd.interaction_id")
+            print("JOIN sites s ON hd.site_id = s.id")
+            print("WHERE i.interaction_type = 'hire' ORDER BY i.created_at DESC LIMIT 1;")
+            print("\n-- Test the new reference number system:")
+            print("SELECT interaction_type, get_prefix_for_interaction(interaction_type) as prefix")
+            print("FROM reference_prefixes WHERE is_active = true;")
+        else:
+            print("\n❌ Test failed - check error messages above")
+    
+    except Exception as e:
+        print(f"\n💥 Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    finally:
+        processor.disconnect()
+
+
+if __name__ == "__main__":
+    main()

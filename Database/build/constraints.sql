@@ -101,10 +101,10 @@ CHECK (
 -- =============================================================================
 
 -- Reference Number Format
--- Ensure reference numbers follow expected format
+-- Add the new constraint with 11-character format
 ALTER TABLE interactions
 ADD CONSTRAINT check_reference_format
-CHECK (reference_number ~ '^[A-Z]{2}[0-9]{6}$'); -- e.g., 'IN123456'
+CHECK (reference_number ~ '^[A-Z]{2}[0-9]{9}$'); -- e.g., 'HR250606001'
 
 -- Equipment Quantity Logic
 -- Quantities must be positive
