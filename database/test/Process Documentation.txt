@@ -1,0 +1,386 @@
+=============================================================================
+TASK MANAGEMENT SYSTEM - PROCESS DOCUMENTATION
+=============================================================================
+Database: task_management
+Created: 2025-06-06
+Documentation: Complete workflow descriptions for all 8 interaction types
+=============================================================================
+
+=============================================================================
+1. PRICE LIST REQUEST PROCESS
+=============================================================================
+
+SCENARIO: "John Guy from ABC Construction calls asking for a price list for all compaction tools"
+
+PROCESS FLOW:
+1. Customer calls hire controller
+2. Hire controller captures request details
+3. System creates price list interaction
+4. System creates user task for hire controller to send price list
+
+INTERACTION TYPE: price_list
+REFERENCE FORMAT: PL250606001 (PL + date + sequence)
+
+LAYERS:
+- Layer 1 (Interaction): Records customer, contact, employee, request details
+- Layer 2 (Components): Creates equipment list component with requested items
+- Layer 3 (Tasks): Creates user task "send_price_list" assigned to hire controller
+
+TASK DETAILS:
+- Assigned To: Hire controller (same person who took call)
+- Priority: Medium
+- Due Date: Tomorrow
+- Task Type: send_price_list
+
+REQUIRED ACTIONS:
+- Prepare price list for requested equipment
+- Include customer-specific pricing (company vs individual rates)
+- Email price list to customer contact
+- Include equipment specifications and accessories
+- Follow up if no response within reasonable time
+
+OUTCOME: Customer receives professional price list via email
+
+=============================================================================
+2. QUOTE REQUEST PROCESS  
+=============================================================================
+
+SCENARIO: "John Guy from ABC Construction needs a quote to hire a rammer for 3 days"
+
+PROCESS FLOW:
+1. Customer calls requesting formal quote
+2. Hire controller captures equipment and duration requirements
+3. System calculates pricing based on customer type and duration
+4. System creates quote interaction with financial components
+5. System creates user task for hire controller to generate and send quote
+
+INTERACTION TYPE: quote
+REFERENCE FORMAT: QT250606001 (QT + date + sequence)
+
+LAYERS:
+- Layer 1 (Interaction): Records customer, contact, employee, quote request
+- Layer 2 (Components): 
+  * Equipment list with duration and pricing details
+  * Quote totals with subtotal, VAT, total, validity period
+- Layer 3 (Tasks): Creates user task "send_quote" assigned to hire controller
+
+PRICING CALCULATION:
+- Retrieves customer-specific rates (company vs individual)
+- Calculates best rate structure (daily/weekly/monthly) for requested duration
+- Applies VAT at 15%
+- Includes deposit requirements
+- Sets quote validity period (30 days)
+
+TASK DETAILS:
+- Assigned To: Hire controller
+- Priority: High (for large quotes) or Medium
+- Due Date: Tomorrow (quotes are time-sensitive)
+- Task Type: send_quote
+
+REQUIRED ACTIONS:
+- Generate formal quote document (PDF)
+- Include all equipment specifications and pricing breakdown
+- Add standard terms and conditions
+- Email quote to customer contact
+- Follow up within 3 business days
+- Update interaction status when quote sent
+
+OUTCOME: Customer receives professional quote with pricing, terms, and validity period
+
+=============================================================================
+3. STATEMENT REQUEST PROCESS
+=============================================================================
+
+SCENARIO: "John Guy from ABC Construction requests an account statement"
+
+PROCESS FLOW:
+1. Customer calls requesting account statement
+2. Hire controller captures request
+3. System creates statement interaction
+4. System creates user task for accounts team to generate statement
+
+INTERACTION TYPE: statement
+REFERENCE FORMAT: ST250606001 (ST + date + sequence)
+
+LAYERS:
+- Layer 1 (Interaction): Records customer, contact, employee, statement request
+- Layer 2 (Components): No additional components needed (basic request)
+- Layer 3 (Tasks): Creates user task "send_statement" assigned to accounts team
+
+TASK DETAILS:
+- Assigned To: Accounts team member (not hire controller)
+- Priority: Medium
+- Due Date: Tomorrow
+- Task Type: send_statement
+
+REQUIRED ACTIONS:
+- Generate current account statement showing transactions and balance
+- Include payment history and outstanding amounts
+- Email statement to customer contact (verify billing contact)
+- Update interaction status when statement sent
+
+SPECIAL CONSIDERATIONS:
+- Verifies if contact is billing contact
+- Alerts if statement should go to different contact
+- Includes customer credit limit and payment terms information
+
+OUTCOME: Customer receives detailed account statement via email
+
+=============================================================================
+4. REFUND REQUEST PROCESS
+=============================================================================
+
+SCENARIO: "John Guy from ABC Construction requests a refund due to overpayment"
+
+PROCESS FLOW:
+1. Customer calls requesting refund
+2. Hire controller captures refund details and reason
+3. System creates refund interaction with financial components
+4. System creates user task for accounts team to process refund
+
+INTERACTION TYPE: refund
+REFERENCE FORMAT: RF250606001 (RF + date + sequence)
+
+LAYERS:
+- Layer 1 (Interaction): Records customer, contact, employee, refund request
+- Layer 2 (Components): Creates refund details component with:
+  * Refund amount and type (full/partial/deposit_only)
+  * Refund reason and method (EFT/cash/credit_note)
+  * Account balance before/after calculations
+  * Banking details requirements
+- Layer 3 (Tasks): Creates user task "process_refund" assigned to accounts team
+
+TASK DETAILS:
+- Assigned To: Accounts team member
+- Priority: High (large amounts) or Medium
+- Due Date: Tomorrow (refunds need prompt attention)
+- Task Type: process_refund
+
+REQUIRED ACTIONS:
+- Verify current account balance and eligibility
+- Obtain customer banking details for EFT
+- Process refund through banking system
+- Update customer account records
+- Email refund confirmation to customer
+- Manager approval required for refunds over R5,000
+
+OUTCOME: Customer receives refund via EFT with confirmation
+
+=============================================================================
+5. HIRE REQUEST PROCESS
+=============================================================================
+
+SCENARIO: "John Guy from ABC Construction wants to hire a rammer and plate compactor, delivery to Sandton site tomorrow at 9 AM"
+
+PROCESS FLOW:
+1. Customer calls with equipment hire request
+2. Hire controller captures equipment, duration, delivery details
+3. System creates hire interaction with delivery components
+4. System creates driver task for equipment delivery
+
+INTERACTION TYPE: hire
+REFERENCE FORMAT: HR250606001 (HR + date + sequence)
+
+LAYERS:
+- Layer 1 (Interaction): Records customer, contact, employee, hire request
+- Layer 2 (Components):
+  * Equipment list with quantities and hire duration
+  * Hire details with delivery date, time, site, and instructions
+- Layer 3 (Tasks): Creates driver task "delivery" in drivers taskboard
+
+DRIVER TASK DETAILS:
+- Task Type: delivery
+- Status: Starts in "backlog" (unassigned)
+- Priority: Medium (urgent for same-day requests)
+- Includes: Customer details, site address, equipment summary, delivery instructions
+- Progress Tracking: Booked → Driver Assigned → Quality Control → Customer Notified
+
+REQUIRED ACTIONS:
+- Assign driver to task
+- Verify all equipment is available and functional
+- Load equipment for delivery
+- Deliver to specified site at scheduled time
+- Notify customer via WhatsApp when en route/delivered
+- Update task status through completion
+
+OUTCOME: Customer receives equipment delivered to their site as scheduled
+
+=============================================================================
+6. OFF-HIRE REQUEST PROCESS
+=============================================================================
+
+SCENARIO: "John Guy from ABC Construction is finished with the rammer and plate compactor, requests collection from Sandton site on June 10th at 1 PM"
+
+PROCESS FLOW:
+1. Customer calls requesting equipment collection
+2. Hire controller captures collection details
+3. System creates off-hire interaction with collection components
+4. System creates driver task for equipment collection
+
+INTERACTION TYPE: off_hire
+REFERENCE FORMAT: OH250606001 (OH + date + sequence)
+
+LAYERS:
+- Layer 1 (Interaction): Records customer, contact, employee, off-hire request
+- Layer 2 (Components):
+  * Equipment list (items to be collected)
+  * Off-hire details with collection date, time, site, early return info
+- Layer 3 (Tasks): Creates driver task "collection" in drivers taskboard
+
+DRIVER TASK DETAILS:
+- Task Type: collection
+- Status: Starts in "backlog" (unassigned)
+- Priority: Medium
+- Duration: Shorter than deliveries (60 minutes vs 90 minutes)
+- Progress Tracking: Booked → Driver Assigned → Quality Control → Customer Notified
+
+REQUIRED ACTIONS:
+- Assign driver to collection task
+- Schedule collection at customer's convenience
+- Collect equipment from specified site
+- Check equipment condition upon collection
+- Transport equipment back to depot
+- Update hire records and billing
+
+OUTCOME: Equipment collected from customer site, hire period completed
+
+=============================================================================
+7. BREAKDOWN REQUEST PROCESS
+=============================================================================
+
+SCENARIO: "John Guy reports URGENT - TE1000 Breaker stopped working at Sandton site, blocking critical work, needs driver within the hour"
+
+PROCESS FLOW:
+1. Customer calls with urgent equipment breakdown
+2. Hire controller captures breakdown details and urgency
+3. System creates breakdown interaction with emergency components
+4. System creates URGENT driver task for immediate response
+
+INTERACTION TYPE: breakdown
+REFERENCE FORMAT: BD250606001 (BD + date + sequence)
+
+LAYERS:
+- Layer 1 (Interaction): Records customer, contact, employee, breakdown report
+- Layer 2 (Components):
+  * Equipment list (broken items)
+  * Breakdown details with urgency, issue description, resolution type (swap/repair)
+- Layer 3 (Tasks): Creates URGENT driver task "repair" in drivers taskboard
+
+DRIVER TASK DETAILS:
+- Task Type: repair
+- Status: Starts in "backlog" but requires IMMEDIATE assignment
+- Priority: URGENT/CRITICAL
+- Scheduled Response: Within 30 minutes to 1 hour
+- Equipment: Both broken item (swap out) and replacement (swap in)
+
+SPECIAL HANDLING:
+- Immediate driver assignment required
+- Emergency response timeframes
+- Replacement equipment must be prepared
+- Customer gets priority notification
+- May require overtime/emergency callout
+
+REQUIRED ACTIONS:
+- Assign available driver immediately
+- Prepare replacement equipment
+- Dispatch to site within target timeframe
+- Swap broken equipment for working unit
+- Collect broken equipment for repair
+- Ensure minimal customer downtime
+
+OUTCOME: Customer back operational with minimal downtime, broken equipment collected for repair
+
+=============================================================================
+8. APPLICATION REQUEST PROCESS
+=============================================================================
+
+SCENARIO: "Bill Guy calls saying 'I would like to register my company ZXC Works to hire equipment from you'"
+
+PROCESS FLOW:
+1. Potential customer calls expressing interest in opening account
+2. Hire controller captures applicant details (name, company, email, phone)
+3. System creates application interaction using generic customer
+4. System creates user task for hire controller to email application form
+
+INTERACTION TYPE: application
+REFERENCE FORMAT: AP250606001 (AP + date + sequence)
+
+LAYERS:
+- Layer 1 (Interaction): Uses generic customer (ID 999) for referential integrity
+- Layer 2 (Components): Application details with:
+  * Application type (company/individual)
+  * Applicant contact details (first name, last name, email)
+  * Required documentation list
+  * Verification status (pending)
+- Layer 3 (Tasks): Creates user task "process_application" assigned to hire controller
+
+TASK DETAILS:
+- Assigned To: Hire controller (for initial contact and form distribution)
+- Priority: Medium
+- Due Date: Tomorrow
+- Task Type: process_application
+
+REQUIRED ACTIONS:
+- Email application form to applicant's email address
+- Include required documentation list:
+  * Company registration certificate
+  * VAT certificate  
+  * Director ID copy
+  * Proof of business address
+- Provide company contact details for queries
+- Set follow-up reminders (1 week, 2 weeks)
+- Forward completed applications to manager for review
+
+FOLLOW-UP PROCESS:
+1. Week 1: Check for completed application
+2. Week 2: Send reminder if no response
+3. Month 1: Close application if no response
+4. When received: Forward to manager for approval and customer setup
+
+OUTCOME: Potential customer receives application form and documentation requirements, begins formal application process
+
+=============================================================================
+SYSTEM ARCHITECTURE SUMMARY
+=============================================================================
+
+3-LAYER ARCHITECTURE:
+1. Layer 1 (interactions): Universal entry point - captures who, what, when
+2. Layer 2 (components): Stores interaction-specific details and requirements
+3. Layer 3 (taskboards): Creates actionable work items for employees
+
+TASK ROUTING:
+- Price Lists: Hire Controller
+- Quotes: Hire Controller  
+- Statements: Accounts Team
+- Refunds: Accounts Team
+- Hires: Drivers (delivery tasks)
+- Off-hires: Drivers (collection tasks)
+- Breakdowns: Drivers (urgent repair tasks)
+- Applications: Hire Controller (form distribution)
+
+REFERENCE NUMBERS:
+Format: PPYYMMDDNNN (Prefix + Date + Sequence)
+- Unique daily sequences
+- Traceable across all systems
+- Professional appearance for customers
+
+PRIORITY HANDLING:
+- Urgent: Breakdowns, large refunds, high-value quotes
+- High: Applications, large quotes
+- Medium: Standard requests, statements, hires
+- Low: General inquiries
+
+CUSTOMER TYPES:
+- Real Customers: Full customer/contact records with accounts
+- Applications: Generic customer (ID 999) with applicant details in components
+- Different pricing: Company vs Individual rates
+
+DATABASE DESIGN:
+- Referential integrity maintained
+- Audit trails for all changes
+- Scalable for future features (contracts, advanced reporting)
+- Comprehensive monitoring and analytics capabilities
+
+=============================================================================
+END OF DOCUMENTATION
+=============================================================================

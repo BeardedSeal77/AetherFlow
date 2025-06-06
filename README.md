@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/public/Images/ZealotAi_Round.png" height="120" alt="ZealotAI Logo"/>
+  <img src="/public/images/ZealotAi_Round.png" height="120" alt="ZealotAI Logo"/>
 </p>
 
 <h1 align="center">ZealotAI</h1>

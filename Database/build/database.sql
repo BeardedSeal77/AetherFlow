@@ -157,15 +157,34 @@ CREATE TABLE interactions (
 -- =============================================================================
 
 -- Application Details Component (application interaction type)
+-- Application Details Component (application interaction type)
 CREATE TABLE component_application_details (
     id SERIAL PRIMARY KEY,
     interaction_id INTEGER REFERENCES interactions(id),
     application_type VARCHAR(50) CHECK (application_type IN ('individual', 'company')),
+    
+    -- NEW: Applicant contact details for emailing application forms
+    applicant_first_name VARCHAR(100),
+    applicant_last_name VARCHAR(100),
+    applicant_email VARCHAR(150),
+    
+    -- Existing verification fields
     verification_status VARCHAR(50) DEFAULT 'pending' CHECK (verification_status IN ('pending', 'approved', 'rejected')),
     verification_notes TEXT,
     documents_required TEXT,
-    verification_date DATE
+    verification_date DATE,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add email format validation constraint
+ALTER TABLE component_application_details
+ADD CONSTRAINT check_applicant_email_format
+CHECK (applicant_email IS NULL OR applicant_email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+
+-- Add index for email lookups
+CREATE INDEX idx_component_application_details_email ON component_application_details(applicant_email);
 
 -- Equipment List Component (price_list, quote, order, hire, off_hire, breakdown, coring)
 CREATE TABLE component_equipment_list (
