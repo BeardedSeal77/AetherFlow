@@ -8,7 +8,7 @@
 SET search_path TO core, interactions, tasks, security, system, public;
 
 -- =============================================================================
--- 1. CALCULATE HIRE COSTS
+-- 1. CALCULATE HIRE COSTS (helper for future implementations)
 -- =============================================================================
 
 -- Helper function to calculate hire costs for equipment list
@@ -34,7 +34,7 @@ RETURNS TABLE(
     line_deposit_total DECIMAL(10,2),
     calculated_rental_cost DECIMAL(10,2),
     period_used VARCHAR(20)
-) AS $HIRE_HELPERS$
+) AS $$
 DECLARE
     v_equipment_item JSONB;
     v_customer_type VARCHAR(20);
@@ -85,7 +85,7 @@ BEGIN
             RAISE EXCEPTION 'Pricing not found for equipment % and customer type %', v_equipment_id, v_customer_type;
         END IF;
         
-        -- Calculate rental cost based on period type and duration (we dont really input the days that something will be hired for, it is normally an open hire)
+        -- Calculate rental cost based on period type and duration
         CASE v_period_type
             WHEN 'days' THEN
                 v_calculated_cost := v_pricing.price_per_day * v_duration * v_quantity;
@@ -119,10 +119,10 @@ BEGIN
             v_period_used;
     END LOOP;
 END;
-$HIRE_HELPERS$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
--- 2. CHECK CUSTOMER CREDIT AVAILABILITY
+-- 2. CHECK CUSTOMER CREDIT AVAILABILITY (helper for future implementations)
 -- =============================================================================
 
 -- Helper function to check if customer has sufficient credit for hire
@@ -139,7 +139,7 @@ RETURNS TABLE(
     available_credit DECIMAL(15,2),
     required_amount DECIMAL(15,2),
     shortfall DECIMAL(15,2)
-) AS $CHECK_CREDIT$
+) AS $$
 DECLARE
     v_customer_record RECORD;
     v_current_usage DECIMAL(15,2) := 0.00;
@@ -190,10 +190,10 @@ BEGIN
         p_required_amount,
         v_shortfall;
 END;
-$CHECK_CREDIT$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
--- 3. VALIDATE HIRE EQUIPMENT AVAILABILITY
+-- 3. VALIDATE HIRE EQUIPMENT AVAILABILITY (helper for future implementations)
 -- =============================================================================
 
 -- Helper function to check equipment availability for hire dates
@@ -211,7 +211,7 @@ RETURNS TABLE(
     available_quantity INTEGER,
     availability_status VARCHAR(50),
     next_available_date DATE
-) AS $CHECK_AVAILABILITY$
+) AS $$
 DECLARE
     v_equipment_item JSONB;
     v_equipment_id INTEGER;
@@ -253,7 +253,7 @@ BEGIN
             NULL::DATE as next_available_date; -- TODO: Calculate next available date
     END LOOP;
 END;
-$CHECK_AVAILABILITY$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
 -- 4. GET HIRE TOTALS SUMMARY
@@ -274,7 +274,7 @@ RETURNS TABLE(
     grand_total DECIMAL(15,2),
     equipment_count INTEGER,
     total_quantity INTEGER
-) AS $GET_TOTALS$
+) AS $$
 DECLARE
     v_total_rental DECIMAL(15,2) := 0.00;
     v_total_deposit DECIMAL(15,2) := 0.00;
@@ -310,7 +310,7 @@ BEGIN
         v_equipment_count,
         v_total_quantity;
 END;
-$GET_TOTALS$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
 -- FUNCTION PERMISSIONS & COMMENTS

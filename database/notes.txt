@@ -1,0 +1,8 @@
+(we dont really input the days that something will be hired for, it is normally an open hire)
+
+the system is currently trying to record the duration of the hire
+the business does not typically do that
+the business does open hires
+
+
+turn of the password expiration
