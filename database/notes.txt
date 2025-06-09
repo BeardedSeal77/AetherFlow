@@ -6,3 +6,9 @@ the business does open hires
 
 
 turn of the password expiration
+
+
+missing new hire
+get_quote_details is not properly set up
+check create_off_hire process
+create_application is not properly set up

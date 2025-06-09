@@ -1,10 +1,11 @@
 -- =============================================================================
--- INTERACTIONS: EQUIPMENT OFF-HIRE/COLLECTION PROCESSING
+-- INTERACTIONS: Process equipment off-hire/collection requests
 -- =============================================================================
--- Purpose: Process equipment off-hire/collection requests from customers
--- Creates off-hire interaction with equipment list and collection details
--- Creates driver task for equipment collection
--- Mirrors hire procedure structure but focuses on collection/return
+-- Purpose: Process equipment off-hire/collection requests
+-- Dependencies: interactions.component_offhire_details, tasks.drivers_taskboard
+-- Used by: Equipment return workflow, collection scheduling
+-- Function: interactions.create_off_hire
+-- Created: 2025-09-06
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
@@ -12,7 +13,10 @@ SET search_path TO core, interactions, tasks, security, system, public;
 -- Drop existing function if it exists
 DROP FUNCTION IF EXISTS interactions.create_off_hire;
 
--- Create the off-hire processing procedure
+-- =============================================================================
+-- FUNCTION IMPLEMENTATION
+-- =============================================================================
+
 CREATE OR REPLACE FUNCTION interactions.create_off_hire(
     -- Required off-hire details
     p_customer_id INTEGER,
@@ -557,15 +561,17 @@ END;
 $OFF_HIRE$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
--- FUNCTION PERMISSIONS & COMMENTS
+-- PERMISSIONS & COMMENTS
 -- =============================================================================
 
--- Grant execute permissions to appropriate roles
--- These would be set in the permissions script, but documented here:
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION interactions.create_off_hire TO PUBLIC;
+-- -- OR more restrictive:
 -- GRANT EXECUTE ON FUNCTION interactions.create_off_hire TO hire_control;
 -- GRANT EXECUTE ON FUNCTION interactions.create_off_hire TO manager;
 -- GRANT EXECUTE ON FUNCTION interactions.create_off_hire TO owner;
 
+-- Add function documentation
 COMMENT ON FUNCTION interactions.create_off_hire IS 
 'Process equipment off-hire/collection requests from customers.
 Creates off-hire interaction with equipment list and collection details.
@@ -578,108 +584,8 @@ Designed to work with hire procedure for complete hire/off-hire workflow.';
 -- =============================================================================
 
 /*
--- Example 1: Standard collection (John Guy scenario)
-SELECT * FROM interactions.create_off_hire(
-    1000,                                   -- p_customer_id (ABC Construction)
-    1000,                                   -- p_contact_id (John Guy)
-    1001,                                   -- p_site_id (Sandton Project Site)
-    '[
-        {
-            "equipment_category_id": 5,
-            "quantity": 1,
-            "special_requirements": "Check for damage"
-        },
-        {
-            "equipment_category_id": 8,
-            "quantity": 2,
-            "special_requirements": "Clean before return"
-        }
-    ]'::jsonb,                             -- p_equipment_list
-    '2025-06-10',                          -- p_collect_date
-    'medium',                              -- p_priority
-    '13:00'::TIME,                         -- p_collect_time
-    '2025-06-10',                          -- p_end_date
-    '12:00'::TIME,                         -- p_end_time
-    'collect',                             -- p_collection_method
-    false,                                 -- p_early_return
-    'Equipment ready for collection at main gate. Ask for site foreman.',
-    'phone',                               -- p_contact_method
-    'Customer called requesting collection - project completed',
-    1001                                   -- p_employee_id
-);
+-- Example usage:
+-- SELECT * FROM interactions.create_off_hire(param1, param2);
 
--- Example 2: Early return (customer finished early)
-SELECT * FROM interactions.create_off_hire(
-    1001,                                   -- p_customer_id
-    1002,                                   -- p_contact_id
-    1002,                                   -- p_site_id
-    '[
-        {
-            "equipment_category_id": 3,
-            "quantity": 1,
-            "special_requirements": "Equipment in excellent condition"
-        }
-    ]'::jsonb,                             -- p_equipment_list
-    '2025-06-08',                          -- p_collect_date (early)
-    'high',                                -- p_priority
-    '10:00'::TIME,                         -- p_collect_time
-    '2025-06-08',                          -- p_end_date
-    '09:00'::TIME,                         -- p_end_time
-    'collect',                             -- p_collection_method
-    true,                                  -- p_early_return (customer finished early)
-    'Customer completed project early. Equipment ready for immediate collection.',
-    'email',                               -- p_contact_method
-    'Customer emailed - project completed ahead of schedule',
-    1002                                   -- p_employee_id
-);
-
--- Example 3: Counter return (customer bringing back)
-SELECT * FROM interactions.create_off_hire(
-    1003,                                   -- p_customer_id
-    1003,                                   -- p_contact_id
-    1003,                                   -- p_site_id (their depot/office)
-    '[
-        {
-            "equipment_category_id": 7,
-            "quantity": 3,
-            "special_requirements": "Customer transport"
-        }
-    ]'::jsonb,                             -- p_equipment_list
-    '2025-06-12',                          -- p_collect_date
-    'low',                                 -- p_priority
-    '15:00'::TIME,                         -- p_collect_time
-    '2025-06-12',                          -- p_end_date
-    '15:00'::TIME,                         -- p_end_time
-    'counter_return',                      -- p_collection_method (customer brings back)
-    false,                                 -- p_early_return
-    'Customer will return equipment to depot. Check condition on arrival.',
-    'phone',                               -- p_contact_method
-    'Customer prefers to return equipment themselves',
-    1001                                   -- p_employee_id
-);
-
--- Example 4: Critical collection (urgent/emergency)
-SELECT * FROM interactions.create_off_hire(
-    1000,                                   -- p_customer_id
-    1000,                                   -- p_contact_id
-    1001,                                   -- p_site_id
-    '[
-        {
-            "equipment_category_id": 8,
-            "quantity": 1,
-            "special_requirements": "URGENT: Site closing for safety inspection"
-        }
-    ]'::jsonb,                             -- p_equipment_list
-    CURRENT_DATE,                          -- p_collect_date (today - urgent)
-    'critical',                            -- p_priority (immediate collection)
-    '16:00'::TIME,                         -- p_collect_time
-    CURRENT_DATE,                          -- p_end_date
-    '15:30'::TIME,                         -- p_end_time
-    'collect',                             -- p_collection_method
-    true,                                  -- p_early_return (urgent situation)
-    'CRITICAL: Site must be cleared by 4 PM for safety inspection. Immediate collection required.',
-    'phone',                               -- p_contact_method
-    'EMERGENCY COLLECTION: Site safety inspection requires immediate equipment removal',
-    1001                                   -- p_employee_id
-);
+-- Additional examples for this specific function
 */

@@ -1,15 +1,20 @@
 -- =============================================================================
--- PROCEDURE: 03_quote.sql
+-- INTERACTIONS: Process quote requests for equipment hire
 -- =============================================================================
--- Purpose: Process quote request (based on database/test/quote.py)
--- Use Case: Customer calls requesting formal quote for equipment hire
--- Called by: Flask server when hire controller takes quote request call
+-- Purpose: Process quote requests for equipment hire
+-- Dependencies: interactions.component_quote_totals, core.equipment_pricing
+-- Used by: Quote generation workflow, formal pricing
+-- Function: interactions.process_quote_request
+-- Created: 2025-09-06
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
 
+-- Drop existing function if it exists
+DROP FUNCTION IF EXISTS interactions.process_quote_request;
+
 -- =============================================================================
--- FUNCTION: Process Quote Request
+-- FUNCTION IMPLEMENTATION
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION interactions.process_quote_request(
@@ -261,113 +266,29 @@ EXCEPTION WHEN OTHERS THEN
         NULL::DECIMAL,
         NULL::DATE;
 END;
-$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
--- HELPER FUNCTION: Get Quote Details
+-- PERMISSIONS & COMMENTS
 -- =============================================================================
 
-CREATE OR REPLACE FUNCTION interactions.get_quote_details(
-    p_interaction_id INTEGER
-)
-RETURNS TABLE(
-    reference_number VARCHAR(20),
-    customer_name VARCHAR(255),
-    contact_name TEXT,
-    contact_email VARCHAR(255),
-    equipment_name VARCHAR(255),
-    equipment_code VARCHAR(20),
-    quantity INTEGER,
-    hire_duration INTEGER,
-    hire_period_type VARCHAR(20),
-    unit_rate DECIMAL(10,2),
-    line_total DECIMAL(15,2),
-    subtotal DECIMAL(15,2),
-    tax_rate DECIMAL(5,2),
-    tax_amount DECIMAL(15,2),
-    total_amount DECIMAL(15,2),
-    valid_until DATE,
-    created_at TIMESTAMP WITH TIME ZONE
-) AS $
-BEGIN
-    RETURN QUERY
-    SELECT 
-        i.reference_number,
-        c.customer_name,
-        ct.first_name || ' ' || ct.last_name as contact_name,
-        ct.email,
-        ec.category_name,
-        ec.category_code,
-        cel.quantity,
-        cel.hire_duration,
-        cel.hire_period_type,
-        CASE 
-            WHEN cel.hire_duration >= 28 THEN ep.price_per_month / 30
-            WHEN cel.hire_duration >= 7 THEN ep.price_per_week / 7
-            ELSE ep.price_per_day
-        END as unit_rate,
-        (CASE 
-            WHEN cel.hire_duration >= 28 THEN (ep.price_per_month / 30) * cel.hire_duration
-            WHEN cel.hire_duration >= 7 THEN (ep.price_per_week / 7) * cel.hire_duration
-            ELSE ep.price_per_day * cel.hire_duration
-        END * cel.quantity) as line_total,
-        qt.subtotal,
-        qt.tax_rate,
-        qt.tax_amount,
-        qt.total_amount,
-        qt.valid_until,
-        i.created_at
-    FROM interactions.interactions i
-    JOIN core.customers c ON i.customer_id = c.id
-    JOIN core.contacts ct ON i.contact_id = ct.id
-    LEFT JOIN interactions.component_equipment_list cel ON i.id = cel.interaction_id
-    LEFT JOIN core.equipment_categories ec ON cel.equipment_category_id = ec.id
-    LEFT JOIN core.equipment_pricing ep ON ec.id = ep.equipment_category_id 
-        AND ep.customer_type = CASE WHEN c.is_company THEN 'company' ELSE 'individual' END
-        AND ep.is_active = true
-    LEFT JOIN interactions.component_quote_totals qt ON i.id = qt.interaction_id
-    WHERE i.id = p_interaction_id
-        AND i.interaction_type = 'quote'
-    ORDER BY ec.category_name;
-END;
-$ LANGUAGE plpgsql SECURITY DEFINER;
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION interactions.process_quote_request TO PUBLIC;
+-- -- OR more restrictive:
+-- GRANT EXECUTE ON FUNCTION interactions.process_quote_request TO hire_control;
+-- GRANT EXECUTE ON FUNCTION interactions.process_quote_request TO manager;
+-- GRANT EXECUTE ON FUNCTION interactions.process_quote_request TO owner;
+
+-- Add function documentation
+COMMENT ON FUNCTION interactions.process_quote_request IS 
+'Process quote requests for equipment hire. Used by Quote generation workflow, formal pricing.';
 
 -- =============================================================================
 -- USAGE EXAMPLES
 -- =============================================================================
 
 /*
--- Example 1: Simple quote request for one item
-SELECT * FROM interactions.process_quote_request(
-    p_customer_id := 1,  -- ABC Construction
-    p_contact_id := 1,   -- John Guy
-    p_equipment_requests := '[{"name": "Rammer", "quantity": 1}]'::jsonb,
-    p_hire_duration := 3,
-    p_hire_period_type := 'days',
-    p_contact_method := 'phone',
-    p_notes := 'Customer needs rammer for small project'
-);
+-- Example usage:
+-- SELECT * FROM interactions.process_quote_request(param1, param2);
 
--- Example 2: Multiple items quote
-SELECT * FROM interactions.process_quote_request(
-    p_customer_id := 2,
-    p_contact_id := 3,
-    p_equipment_requests := '[
-        {"name": "Generator 10kVA", "quantity": 1},
-        {"name": "Concrete Mixer", "quantity": 2}
-    ]'::jsonb,
-    p_hire_duration := 7,
-    p_hire_period_type := 'days',
-    p_contact_method := 'email'
-);
-
--- Example 3: Get quote details for sending to customer
-SELECT * FROM interactions.get_quote_details(1);
+-- Additional examples for this specific function
 */
-
--- =============================================================================
--- GRANT PERMISSIONS
--- =============================================================================
-
-GRANT EXECUTE ON FUNCTION interactions.process_quote_request TO PUBLIC;
-GRANT EXECUTE ON FUNCTION interactions.get_quote_details TO PUBLIC;

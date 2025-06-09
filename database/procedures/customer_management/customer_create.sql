@@ -1,9 +1,11 @@
 -- =============================================================================
--- CUSTOMER MANAGEMENT: NEW CUSTOMER REGISTRATION
+-- CUSTOMER MANAGEMENT: Create new customer with primary contact and site
 -- =============================================================================
--- Purpose: Complete customer registration procedure for data entry page
--- Creates customer, primary contact, and site records with full audit trail
--- Designed for Flask frontend data entry forms
+-- Purpose: Create new customer with primary contact and site
+-- Dependencies: core.customers, core.contacts, core.sites tables
+-- Used by: Customer registration workflow
+-- Function: core.create_new_customer
+-- Created: 2025-09-06
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
@@ -11,7 +13,10 @@ SET search_path TO core, interactions, tasks, security, system, public;
 -- Drop existing function if it exists
 DROP FUNCTION IF EXISTS core.create_new_customer;
 
--- Create the customer registration procedure
+-- =============================================================================
+-- FUNCTION IMPLEMENTATION
+-- =============================================================================
+
 CREATE OR REPLACE FUNCTION core.create_new_customer(
     -- Required Customer Details
     p_customer_name VARCHAR(255),
@@ -461,72 +466,24 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
--- FUNCTION PERMISSIONS & COMMENTS
+-- PERMISSIONS & COMMENTS
 -- =============================================================================
 
--- Grant execute permissions to appropriate roles
--- These would be set in the permissions script, but documented here:
+-- Set appropriate permissions based on function purpose
 -- GRANT EXECUTE ON FUNCTION core.create_new_customer TO hire_control;
 -- GRANT EXECUTE ON FUNCTION core.create_new_customer TO manager;
 -- GRANT EXECUTE ON FUNCTION core.create_new_customer TO owner;
 
 COMMENT ON FUNCTION core.create_new_customer IS 
-'Complete customer registration procedure for Flask frontend.
-Creates customer, primary contact, and optional site records with full validation and audit trail.
-Designed for data entry forms with comprehensive error handling and validation.';
+'Create new customer with primary contact and site. Used by Customer registration workflow.';
 
 -- =============================================================================
 -- USAGE EXAMPLES
 -- =============================================================================
 
 /*
--- Example 1: Company with custom customer code
-SELECT * FROM core.create_new_customer(
-    'Tech Solutions Ltd',                    -- p_customer_name
-    'Sarah',                                 -- p_contact_first_name  
-    'Williams',                              -- p_contact_last_name
-    'sarah@techsolutions.co.za',            -- p_contact_email
-    'TECH001'                               -- p_customer_code (custom)
-);
+-- Example usage:
+-- SELECT * FROM core.create_new_customer(parameter1, parameter2);
 
--- Example 2: Individual customer, code will default to ID
-SELECT * FROM core.create_new_customer(
-    'John Smith',              -- p_customer_name
-    'John',                    -- p_contact_first_name
-    'Smith',                   -- p_contact_last_name
-    'john.smith@email.com'     -- p_contact_email
-    -- p_customer_code defaults to NULL, so will use ID
-);
-
--- Example 3: Company, let code default to ID with additional details
-SELECT * FROM core.create_new_customer(
-    'ABC Manufacturing',       -- p_customer_name
-    'Mike',                    -- p_contact_first_name
-    'Johnson',                 -- p_contact_last_name
-    'mike@abcmfg.co.za',      -- p_contact_email
-    NULL,                      -- p_customer_code (will use ID)
-    true,                      -- p_is_company
-    '2023/654321/07',         -- p_registration_number
-    '9876543210',             -- p_vat_number
-    25000.00                  -- p_credit_limit
-);
-*/
-
-/*
-# Example Flask integration
-result = db.execute("""
-    SELECT * FROM core.create_new_customer(
-        p_customer_name := %s,
-        p_is_company := %s,
-        p_contact_first_name := %s,
-        p_contact_last_name := %s,
-        p_contact_email := %s,
-        p_contact_phone := %s,
-        p_address_line1 := %s,
-        p_city := %s,
-        p_session_token := %s
-    )
-""", [customer_name, is_company, first_name, last_name, email, phone, address, city, session_token])
-
-success, message, customer_id, customer_code, contact_id, site_id, validation_errors = result.fetchone()
+-- Additional examples based on function purpose...
 */

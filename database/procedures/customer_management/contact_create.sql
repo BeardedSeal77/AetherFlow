@@ -1,8 +1,11 @@
 -- =============================================================================
--- CUSTOMER MANAGEMENT: NEW CONTACT FOR EXISTING CUSTOMER
+-- CUSTOMER MANAGEMENT: Add new contact to existing customer
 -- =============================================================================
--- Purpose: Add a new contact to an already existing customer
--- Designed for Flask frontend data entry forms
+-- Purpose: Add new contact to existing customer
+-- Dependencies: core.contacts table
+-- Used by: Contact management workflow
+-- Function: core.create_new_contact
+-- Created: 2025-09-06
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
@@ -10,7 +13,10 @@ SET search_path TO core, interactions, tasks, security, system, public;
 -- Drop existing function if it exists
 DROP FUNCTION IF EXISTS core.create_new_contact;
 
--- Create the new contact procedure
+-- =============================================================================
+-- FUNCTION IMPLEMENTATION
+-- =============================================================================
+
 CREATE OR REPLACE FUNCTION core.create_new_contact(
     -- Required fields
     p_customer_id INTEGER,
@@ -318,74 +324,24 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
--- FUNCTION PERMISSIONS & COMMENTS
+-- PERMISSIONS & COMMENTS
 -- =============================================================================
 
--- Grant execute permissions to appropriate roles
--- These would be set in the permissions script, but documented here:
+-- Set appropriate permissions based on function purpose
 -- GRANT EXECUTE ON FUNCTION core.create_new_contact TO hire_control;
 -- GRANT EXECUTE ON FUNCTION core.create_new_contact TO manager;
 -- GRANT EXECUTE ON FUNCTION core.create_new_contact TO owner;
 
 COMMENT ON FUNCTION core.create_new_contact IS 
-'Add a new contact to an existing customer.
-Uses core.get_customer_by_id() for customer validation and core.detect_duplicate_contacts() for duplicate detection.
-Simplified and optimized by delegating search/validation to dedicated search procedures.
-Designed for Flask frontend data entry forms.';
+'Add new contact to existing customer. Used by Contact management workflow.';
 
 -- =============================================================================
 -- USAGE EXAMPLES
 -- =============================================================================
 
 /*
--- Example 1: Basic contact (no primary/billing flags)
-SELECT * FROM core.create_new_contact(
-    1001,                           -- p_customer_id
-    'Alice',                        -- p_first_name
-    'Johnson',                      -- p_last_name
-    'alice@company.com'             -- p_email
-);
+-- Example usage:
+-- SELECT * FROM core.create_new_contact(parameter1, parameter2);
 
--- Example 2: Contact with job details
-SELECT * FROM core.create_new_contact(
-    1001,                           -- p_customer_id
-    'Bob',                          -- p_first_name
-    'Smith',                        -- p_last_name
-    'bob.smith@company.com',        -- p_email
-    'Site Manager',                 -- p_job_title
-    'Operations',                   -- p_department
-    '+27112345678',                 -- p_phone_number
-    '+27821234567'                  -- p_whatsapp_number
-);
-
--- Example 3: New primary contact (make sure existing primary is handled first)
-SELECT * FROM core.create_new_contact(
-    1001,                           -- p_customer_id
-    'Carol',                        -- p_first_name
-    'Williams',                     -- p_last_name
-    'carol@company.com',            -- p_email
-    'General Manager',              -- p_job_title
-    'Management',                   -- p_department
-    '+27112345679',                 -- p_phone_number
-    '+27821234568',                 -- p_whatsapp_number
-    true,                           -- p_is_primary_contact
-    false,                          -- p_is_billing_contact
-    1001                            -- p_created_by
-);
-
--- Example 4: Using session token
-SELECT * FROM core.create_new_contact(
-    1002,                           -- p_customer_id
-    'David',                        -- p_first_name
-    'Brown',                        -- p_last_name
-    'david@customer.com',           -- p_email
-    NULL,                           -- p_job_title
-    NULL,                           -- p_department
-    '+27833334444',                 -- p_phone_number
-    NULL,                           -- p_whatsapp_number
-    false,                          -- p_is_primary_contact
-    true,                           -- p_is_billing_contact
-    NULL,                           -- p_created_by
-    'your_session_token_here'       -- p_session_token
-);
+-- Additional examples based on function purpose...
 */

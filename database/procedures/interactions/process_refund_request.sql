@@ -1,15 +1,20 @@
 -- =============================================================================
--- PROCEDURE: 05_refund.sql
+-- INTERACTIONS: Process refund requests from customers
 -- =============================================================================
--- Purpose: Process refund request (based on database/test/refund.py)
--- Use Case: Customer calls requesting account refund
--- Called by: Flask server when hire controller takes refund request call
+-- Purpose: Process refund requests from customers
+-- Dependencies: interactions.component_refund_details, tasks.user_taskboard
+-- Used by: Refund processing workflow, accounts management
+-- Function: interactions.process_refund_request
+-- Created: 2025-09-06
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
 
+-- Drop existing function if it exists
+DROP FUNCTION IF EXISTS interactions.process_refund_request;
+
 -- =============================================================================
--- FUNCTION: Process Refund Request
+-- FUNCTION IMPLEMENTATION
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION interactions.process_refund_request(
@@ -242,45 +247,27 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
+-- PERMISSIONS & COMMENTS
+-- =============================================================================
+
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION interactions.process_refund_request TO PUBLIC;
+-- -- OR more restrictive:
+-- GRANT EXECUTE ON FUNCTION interactions.process_refund_request TO hire_control;
+-- GRANT EXECUTE ON FUNCTION interactions.process_refund_request TO manager;
+-- GRANT EXECUTE ON FUNCTION interactions.process_refund_request TO owner;
+
+-- Add function documentation
+COMMENT ON FUNCTION interactions.process_refund_request IS 
+'Process refund requests from customers. Used by Refund processing workflow, accounts management.';
+
+-- =============================================================================
 -- USAGE EXAMPLES
 -- =============================================================================
 
 /*
--- Example 1: Partial refund for overpayment
-SELECT * FROM interactions.process_refund_request(
-    p_customer_id := 1,  -- ABC Construction
-    p_contact_id := 1,   -- John Guy
-    p_refund_amount := 2500.00,
-    p_refund_reason := 'Overpayment on account - customer paid invoice twice',
-    p_refund_type := 'partial',
-    p_refund_method := 'eft',
-    p_contact_method := 'phone'
-);
+-- Example usage:
+-- SELECT * FROM interactions.process_refund_request(param1, param2);
 
--- Example 2: Full refund for cancelled project
-SELECT * FROM interactions.process_refund_request(
-    p_customer_id := 2,
-    p_contact_id := 3,
-    p_refund_amount := 15000.00,
-    p_refund_reason := 'Project cancelled - full refund requested',
-    p_refund_type := 'full',
-    p_refund_method := 'eft',
-    p_notes := 'Customer called urgently requesting immediate refund'
-);
-
--- Example 3: Deposit refund
-SELECT * FROM interactions.process_refund_request(
-    p_customer_id := 4,
-    p_contact_id := 6,
-    p_refund_amount := 500.00,
-    p_refund_reason := 'Equipment deposit refund after successful return',
-    p_refund_type := 'deposit_only',
-    p_refund_method := 'eft'
-);
+-- Additional examples for this specific function
 */
-
--- =============================================================================
--- GRANT PERMISSIONS
--- =============================================================================
-
-GRANT EXECUTE ON FUNCTION interactions.process_refund_request TO PUBLIC;

@@ -1,9 +1,11 @@
 -- =============================================================================
--- CUSTOMER MANAGEMENT: SEARCH CUSTOMERS
+-- CUSTOMER MANAGEMENT: Search customers with fuzzy matching
 -- =============================================================================
--- Purpose: Generic customer search function for dropdown selection across app
--- Optimized for fast search with full-text search capabilities
--- Used by new_contact, interactions, and frontend customer selection
+-- Purpose: Search customers with fuzzy matching
+-- Dependencies: core.customers, core.contacts tables
+-- Used by: Customer lookup in UI
+-- Function: core.search_customers
+-- Created: 2025-09-06
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
@@ -11,7 +13,10 @@ SET search_path TO core, interactions, tasks, security, system, public;
 -- Drop existing function if it exists
 DROP FUNCTION IF EXISTS core.search_customers;
 
--- Create the customer search procedure
+-- =============================================================================
+-- FUNCTION IMPLEMENTATION
+-- =============================================================================
+
 CREATE OR REPLACE FUNCTION core.search_customers(
     -- Search parameters (all optional)
     p_search_term TEXT DEFAULT NULL,
@@ -198,84 +203,24 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
--- HELPER FUNCTION: QUICK CUSTOMER LOOKUP BY ID
+-- PERMISSIONS & COMMENTS
 -- =============================================================================
 
--- Quick function to get customer details by ID (used by other procedures)
-CREATE OR REPLACE FUNCTION core.get_customer_by_id(p_customer_id INTEGER)
-RETURNS TABLE(
-    customer_id INTEGER,
-    customer_code VARCHAR(20),
-    customer_name VARCHAR(255),
-    is_company BOOLEAN,
-    status VARCHAR(20),
-    credit_limit DECIMAL(15,2),
-    payment_terms VARCHAR(50)
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        c.id,
-        c.customer_code,
-        c.customer_name,
-        c.is_company,
-        c.status,
-        c.credit_limit,
-        c.payment_terms
-    FROM core.customers c
-    WHERE c.id = p_customer_id;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- =============================================================================
--- FUNCTION PERMISSIONS & COMMENTS
--- =============================================================================
-
--- Grant execute permissions to appropriate roles
--- These would be set in the permissions script, but documented here:
--- GRANT EXECUTE ON FUNCTION core.search_customers TO PUBLIC; -- Allow all roles to search
--- GRANT EXECUTE ON FUNCTION core.get_customer_by_id TO PUBLIC;
+-- Set appropriate permissions based on function purpose
+-- GRANT EXECUTE ON FUNCTION core.search_customers TO hire_control;
+-- GRANT EXECUTE ON FUNCTION core.search_customers TO manager;
+-- GRANT EXECUTE ON FUNCTION core.search_customers TO owner;
 
 COMMENT ON FUNCTION core.search_customers IS 
-'Generic customer search function with full-text search capabilities.
-Optimized for dropdown selection, customer lookup, and general search across the application.
-Supports partial matching, exact matching, and advanced search features.';
-
-COMMENT ON FUNCTION core.get_customer_by_id IS
-'Quick customer lookup by ID. Used by other procedures for validation and data retrieval.';
+'Search customers with fuzzy matching. Used by Customer lookup in UI.';
 
 -- =============================================================================
 -- USAGE EXAMPLES
 -- =============================================================================
 
 /*
--- Example 1: Search all customers containing "ABC"
-SELECT * FROM core.search_customers('ABC');
+-- Example usage:
+-- SELECT * FROM core.search_customers(parameter1, parameter2);
 
--- Example 2: Search only companies
-SELECT * FROM core.search_customers('Construction', 'company');
-
--- Example 3: Search individuals only
-SELECT * FROM core.search_customers('John', 'individual');
-
--- Example 4: Search with pagination (50 results, skip first 100)
-SELECT * FROM core.search_customers('Ltd', 'company', 'active', true, 50, 100);
-
--- Example 5: Search inactive customers
-SELECT * FROM core.search_customers('', NULL, 'inactive');
-
--- Example 6: Search by customer code
-SELECT * FROM core.search_customers('ABC001');
-
--- Example 7: Search by VAT number
-SELECT * FROM core.search_customers('4123456789');
-
--- Example 8: Get customer by ID
-SELECT * FROM core.get_customer_by_id(1001);
-
--- Example 9: Search without contact info (faster)
-SELECT * FROM core.search_customers('ABC', NULL, 'active', false);
-
--- Example 10: Empty search (returns all active customers, limited)
-SELECT * FROM core.search_customers();
+-- Additional examples based on function purpose...
 */

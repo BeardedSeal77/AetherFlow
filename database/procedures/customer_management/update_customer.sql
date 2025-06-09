@@ -1,2 +1,0 @@
--- only ran by manager or above
--- allows the user to make changes to customers or contacts

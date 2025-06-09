@@ -1,15 +1,20 @@
 -- =============================================================================
--- PROCEDURE: 04_statement.sql
+-- INTERACTIONS: Process account statement requests
 -- =============================================================================
--- Purpose: Process account statement request (based on database/test/statement.py)
--- Use Case: Customer calls requesting account statement
--- Called by: Flask server when hire controller takes statement request call
+-- Purpose: Process account statement requests
+-- Dependencies: interactions.interactions, tasks.user_taskboard
+-- Used by: Statement generation workflow, account management
+-- Function: interactions.process_statement_request
+-- Created: 2025-09-06
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
 
+-- Drop existing function if it exists
+DROP FUNCTION IF EXISTS interactions.process_statement_request;
+
 -- =============================================================================
--- FUNCTION: Process Statement Request
+-- FUNCTION IMPLEMENTATION
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION interactions.process_statement_request(
@@ -111,3 +116,29 @@ BEGIN
     
     -- Create user task for accounts team (Layer 3)
     v_task_title := 'Generate account statement for ' || v_contact
+
+-- =============================================================================
+-- PERMISSIONS & COMMENTS
+-- =============================================================================
+
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION interactions.process_statement_request TO PUBLIC;
+-- -- OR more restrictive:
+-- GRANT EXECUTE ON FUNCTION interactions.process_statement_request TO hire_control;
+-- GRANT EXECUTE ON FUNCTION interactions.process_statement_request TO manager;
+-- GRANT EXECUTE ON FUNCTION interactions.process_statement_request TO owner;
+
+-- Add function documentation
+COMMENT ON FUNCTION interactions.process_statement_request IS 
+'Process account statement requests. Used by Statement generation workflow, account management.';
+
+-- =============================================================================
+-- USAGE EXAMPLES
+-- =============================================================================
+
+/*
+-- Example usage:
+-- SELECT * FROM interactions.process_statement_request(param1, param2);
+
+-- Additional examples for this specific function
+*/

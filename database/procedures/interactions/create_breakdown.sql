@@ -1,9 +1,11 @@
 -- =============================================================================
--- INTERACTIONS: EQUIPMENT BREAKDOWN PROCESSING
+-- INTERACTIONS: Process equipment breakdown reports from customers
 -- =============================================================================
 -- Purpose: Process equipment breakdown reports from customers
--- Creates breakdown interaction with equipment list and breakdown details
--- Creates urgent driver task for repair/swap response
+-- Dependencies: interactions.component_breakdown_details, tasks.drivers_taskboard
+-- Used by: Breakdown reporting workflow, emergency repairs
+-- Function: interactions.create_breakdown
+-- Created: 2025-09-06
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
@@ -11,7 +13,10 @@ SET search_path TO core, interactions, tasks, security, system, public;
 -- Drop existing function if it exists
 DROP FUNCTION IF EXISTS interactions.create_breakdown;
 
--- Create the breakdown processing procedure
+-- =============================================================================
+-- FUNCTION IMPLEMENTATION
+-- =============================================================================
+
 CREATE OR REPLACE FUNCTION interactions.create_breakdown(
     -- Required breakdown details
     p_customer_id INTEGER,
@@ -545,16 +550,17 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
--- FUNCTION PERMISSIONS & COMMENTS
+-- PERMISSIONS & COMMENTS
 -- =============================================================================
 
--- Grant execute permissions to appropriate roles
--- These would be set in the permissions script, but documented here:
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION interactions.create_breakdown TO PUBLIC;
+-- -- OR more restrictive:
 -- GRANT EXECUTE ON FUNCTION interactions.create_breakdown TO hire_control;
 -- GRANT EXECUTE ON FUNCTION interactions.create_breakdown TO manager;
 -- GRANT EXECUTE ON FUNCTION interactions.create_breakdown TO owner;
--- GRANT EXECUTE ON FUNCTION interactions.create_breakdown TO driver;
 
+-- Add function documentation
 COMMENT ON FUNCTION interactions.create_breakdown IS 
 'Process equipment breakdown reports from customers.
 Creates breakdown interaction with equipment list and breakdown component details.
@@ -567,80 +573,8 @@ Designed for Flask frontend breakdown reporting workflow.';
 -- =============================================================================
 
 /*
--- Example 1: Critical rammer breakdown (John Guy scenario)
-SELECT * FROM interactions.create_breakdown(
-    1000,                                   -- p_customer_id (ABC Construction)
-    1000,                                   -- p_contact_id (John Guy)
-    1001,                                   -- p_site_id (Sandton Project Site)
-    '[
-        {
-            "equipment_category_id": 5,
-            "quantity": 1,
-            "issue_description": "Rammer stopped working, won''t start"
-        }
-    ]'::jsonb,                             -- p_equipment_list
-    'Rammer HR-250 stopped working completely. Customer reports it was working fine yesterday, but today it won''t start at all. Blocking critical concrete work.',
-    'high',                                -- p_urgency_level
-    'swap',                                -- p_resolution_type  
-    'Blocking critical concrete pouring work - project delayed',
-    'John Guy',                            -- p_customer_contact_onsite
-    '+27111234567',                        -- p_customer_phone_onsite
-    CURRENT_TIMESTAMP,                     -- p_breakdown_date
-    'phone',                               -- p_contact_method
-    'Customer called at 2:30 PM reporting urgent breakdown',
-    1001                                   -- p_employee_id
-);
+-- Example usage:
+-- SELECT * FROM interactions.create_breakdown(param1, param2);
 
--- Example 2: Multiple equipment breakdown
-SELECT * FROM interactions.create_breakdown(
-    1001,                                   -- p_customer_id
-    1002,                                   -- p_contact_id  
-    1002,                                   -- p_site_id
-    '[
-        {
-            "equipment_category_id": 3,
-            "quantity": 1, 
-            "issue_description": "Excavator hydraulics leaking"
-        },
-        {
-            "equipment_category_id": 7,
-            "quantity": 2,
-            "issue_description": "Both compactors overheating"
-        }
-    ]'::jsonb,                             -- p_equipment_list
-    'Multiple equipment failures at construction site. Excavator has hydraulic leak, both compactors overheating.',
-    'medium',                              -- p_urgency_level
-    'repair_onsite',                       -- p_resolution_type
-    'Slowing down construction progress',
-    'Site Foreman',                        -- p_customer_contact_onsite
-    '+27112345678',                        -- p_customer_phone_onsite
-    CURRENT_TIMESTAMP - INTERVAL '2 hours', -- p_breakdown_date (reported 2 hours ago)
-    'email',                               -- p_contact_method
-    'Customer emailed breakdown report with photos',
-    1002                                   -- p_employee_id
-);
-
--- Example 3: Critical breakdown requiring immediate response
-SELECT * FROM interactions.create_breakdown(
-    1000,                                   -- p_customer_id
-    1000,                                   -- p_contact_id
-    1001,                                   -- p_site_id
-    '[
-        {
-            "equipment_category_id": 8,
-            "quantity": 1,
-            "issue_description": "Crane boom stuck, cannot lower"
-        }
-    ]'::jsonb,                             -- p_equipment_list
-    'CRITICAL: Crane boom stuck in raised position, safety hazard, site evacuation required',
-    'critical',                            -- p_urgency_level (immediate response)
-    'repair_onsite',                       -- p_resolution_type
-    'SAFETY HAZARD - Site evacuated, work stopped completely',
-    'Site Safety Officer',                 -- p_customer_contact_onsite
-    '+27111234999',                        -- p_customer_phone_onsite
-    CURRENT_TIMESTAMP,                     -- p_breakdown_date
-    'phone',                               -- p_contact_method
-    'EMERGENCY CALL - Site safety officer reports critical equipment failure',
-    1001                                   -- p_employee_id
-);
+-- Additional examples for this specific function
 */
