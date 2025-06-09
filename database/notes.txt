@@ -12,3 +12,9 @@ missing new hire
 get_quote_details is not properly set up
 check create_off_hire process
 create_application is not properly set up
+
+please check create_off_hire process that it also works properly.
+(also the create_hire procedure)
+
+remember there are helpers procedures.
+I want to create simple procedures that offload to the helpers if possible.
