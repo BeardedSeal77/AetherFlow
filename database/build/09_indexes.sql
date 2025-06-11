@@ -86,6 +86,9 @@ CREATE INDEX idx_interactions_date ON interactions.interactions(created_at);
 CREATE INDEX idx_component_equipment_interaction ON interactions.component_equipment_list(interaction_id);
 CREATE INDEX idx_component_equipment_category ON interactions.component_equipment_list(equipment_category_id);
 
+CREATE INDEX idx_component_accessories_list_interaction ON interactions.component_accessories_list(interaction_id);
+CREATE INDEX idx_component_accessories_list_accessory ON interactions.component_accessories_list(accessory_id);
+
 CREATE INDEX idx_component_hire_interaction ON interactions.component_hire_details(interaction_id);
 CREATE INDEX idx_component_hire_site ON interactions.component_hire_details(site_id);
 CREATE INDEX idx_component_hire_date ON interactions.component_hire_details(deliver_date);

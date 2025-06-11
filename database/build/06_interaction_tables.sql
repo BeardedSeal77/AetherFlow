@@ -67,6 +67,21 @@ CREATE TABLE interactions.component_equipment_list (
     FOREIGN KEY (equipment_category_id) REFERENCES core.equipment_categories(id)
 );
 
+-- Equipment Accessories Component (used by price_list, quote, hire, off_hire, breakdown)
+CREATE TABLE interactions.component_accessories_list (
+    id SERIAL PRIMARY KEY,
+    interaction_id INTEGER NOT NULL,
+    accessory_id INTEGER NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    is_default_selection BOOLEAN NOT NULL DEFAULT false,
+    unit_cost_at_time DECIMAL(8,2) DEFAULT 0.00,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (interaction_id) REFERENCES interactions.interactions(id) ON DELETE CASCADE,
+    FOREIGN KEY (accessory_id) REFERENCES core.equipment_accessories(id)
+);
+
+
 -- Hire Details Component (for hire interactions)
 CREATE TABLE interactions.component_hire_details (
     id SERIAL PRIMARY KEY,

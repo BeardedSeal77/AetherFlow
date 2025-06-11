@@ -173,9 +173,6 @@ INSERT INTO core.contacts (
     true, false, 'active', CURRENT_TIMESTAMP
 );
 
--- Reserve ID sequences to prevent conflicts
-SELECT setval('core.customers_id_seq', 1000, false);
-SELECT setval('core.contacts_id_seq', 1000, false);
 
 -- =============================================================================
 -- NEXT STEP: Run 05_security_tables.sql
