@@ -36,55 +36,15 @@ SELECT setval('tasks.user_taskboard_id_seq', 1000, false);
 SELECT setval('tasks.drivers_taskboard_id_seq', 1000, false);
 
 -- Security schema sequences
-SELECT setval('security.employee_auth_id_seq', 1000, false);
+-- SELECT setval('security.employee_auth_id_seq', 1000, false);
 SELECT setval('security.role_permissions_id_seq', 1000, false);
-SELECT setval('security.user_sessions_id_seq', 1000, false);
-SELECT setval('security.audit_logs_id_seq', 1000, false);
+-- SELECT setval('security.user_sessions_id_seq', 1000, false);
+-- SELECT setval('security.audit_logs_id_seq', 1000, false);
 SELECT setval('security.login_attempts_id_seq', 1000, false);
 
 -- System schema sequences
 SELECT setval('system.reference_sequences_id_seq', 1000, false);
-SELECT setval('system.system_configuration_id_seq', 1000, false);
-
--- =============================================================================
--- VALIDATION AND SUMMARY
--- =============================================================================
-
--- Validate sequence settings
-DO $$
-DECLARE
-    seq_record RECORD;
-    seq_count INTEGER := 0;
-BEGIN
-    RAISE NOTICE '=============================================================================';
-    RAISE NOTICE 'SEQUENCE RESET SUMMARY';
-    RAISE NOTICE '=============================================================================';
-    
-    -- Check all sequences in relevant schemas
-    FOR seq_record IN 
-        SELECT schemaname, sequencename, last_value, is_called
-        FROM pg_sequences 
-        WHERE schemaname IN ('core', 'interactions', 'tasks', 'security', 'system')
-        ORDER BY schemaname, sequencename
-    LOOP
-        seq_count := seq_count + 1;
-        RAISE NOTICE '% | %.% | Next ID: %', 
-            RPAD(seq_record.schemaname, 12), 
-            RPAD(seq_record.sequencename, 35),
-            CASE 
-                WHEN seq_record.is_called THEN seq_record.last_value + 1
-                ELSE seq_record.last_value
-            END;
-    END LOOP;
-    
-    RAISE NOTICE '=============================================================================';
-    RAISE NOTICE 'Total sequences reset: %', seq_count;
-    RAISE NOTICE 'All sequences set to start from 1000';
-    RAISE NOTICE '';
-    RAISE NOTICE 'Sample data uses IDs 1-999';
-    RAISE NOTICE 'Production data will start from 1000+';
-    RAISE NOTICE '=============================================================================';
-END $$;
+-- SELECT setval('system.system_configuration_id_seq', 1000, false);
 
 -- =============================================================================
 -- FINAL DATA INTEGRITY CHECK

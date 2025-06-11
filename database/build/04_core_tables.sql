@@ -108,7 +108,7 @@ CREATE TABLE core.sites (
 COMMENT ON TABLE core.sites IS 'Customer sites for delivery and billing';
 
 -- =============================================================================
--- EQUIPMENT CATEGORIES TABLE
+-- EQUIPMENT TABLES
 -- =============================================================================
 CREATE TABLE core.equipment_categories (
     id SERIAL PRIMARY KEY,
@@ -123,6 +123,26 @@ CREATE TABLE core.equipment_categories (
 );
 
 COMMENT ON TABLE core.equipment_categories IS 'Equipment categories for rental (generic, not specific units)';
+
+-- Equipment Accessories Table
+CREATE TABLE core.equipment_accessories (
+    id SERIAL PRIMARY KEY,
+    equipment_category_id INTEGER,
+    accessory_name VARCHAR(255) NOT NULL,
+    accessory_type VARCHAR(20) DEFAULT 'default' CHECK (accessory_type IN ('default', 'optional')),
+    quantity INTEGER DEFAULT 1,
+    description TEXT,
+    is_consumable BOOLEAN DEFAULT false,
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_by INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (equipment_category_id) REFERENCES core.equipment_categories(id),
+    FOREIGN KEY (created_by) REFERENCES core.employees(id)
+);
+
+COMMENT ON TABLE core.equipment_accessories IS 'Accessories available for equipment categories';
+COMMENT ON COLUMN core.equipment_accessories.accessory_type IS 'default = included with equipment, optional = customer choice';
+COMMENT ON COLUMN core.equipment_accessories.is_consumable IS 'true for items like fuel, oil, cutting discs that get used up';
 
 -- =============================================================================
 -- EQUIPMENT PRICING TABLE

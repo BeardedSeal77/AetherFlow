@@ -107,7 +107,6 @@ INSERT INTO core.equipment_accessories (equipment_category_id, accessory_name, a
 (1, '2L Petrol', 'default', 1, 'Standard petrol fuel supply', true, 1),
 (1, 'Starting Kit', 'default', 1, 'Pull cord and maintenance tools', false, 1),
 (1, 'Operating Manual', 'default', 1, 'User guide and safety instructions', false, 1),
-
 -- T1000 Breaker accessories (4 chisels: spade default, moil default, flat, cone)
 (2, 'Spade Chisel', 'default', 1, 'General purpose spade chisel (default)', false, 1),
 (2, 'Moil Chisel', 'default', 1, 'Pointed moil chisel for precision work (default)', false, 1),
@@ -115,40 +114,32 @@ INSERT INTO core.equipment_accessories (equipment_category_id, accessory_name, a
 (2, 'Cone Chisel', 'default', 1, 'Cone shaped chisel for breaking', false, 1),
 (2, 'Power Cable', 'default', 1, '10m heavy duty power cable', false, 1),
 (2, 'Carrying Case', 'default', 1, 'Protective carrying case', false, 1),
-
 -- Hydraulic Breaker accessories (4 chisels: spade default, moil default, flat, cone)
 (3, 'Spade Chisel', 'default', 1, 'Heavy duty spade chisel (default)', false, 1),
 (3, 'Moil Chisel', 'default', 1, 'Heavy duty moil chisel (default)', false, 1),
 (3, 'Flat Chisel', 'default', 1, 'Heavy duty flat chisel', false, 1),
 (3, 'Cone Chisel', 'default', 1, 'Heavy duty cone chisel', false, 1),
 (3, 'Hydraulic Hoses', 'default', 2, 'High pressure hydraulic hoses', false, 1),
-
 -- Generator 5kVA accessories (5L petrol default)
 (4, '5L Petrol', 'default', 1, 'Standard petrol fuel supply', true, 1),
 (4, 'Power Cables', 'default', 1, 'Heavy duty power cables', false, 1),
-
 -- Generator 10kVA accessories (5L petrol default)
 (5, '5L Petrol', 'default', 1, 'Standard petrol fuel supply', true, 1),
 (5, 'Power Cables', 'default', 1, 'Heavy duty power cables', false, 1),
 (5, 'Weather Cover', 'default', 1, 'Waterproof protective cover', false, 1),
-
 -- Concrete Mixer accessories
 (6, 'Mixing Paddles', 'default', 2, 'Replacement mixing paddles', false, 1),
 (6, 'Cleaning Kit', 'default', 1, 'Brushes and cleaning supplies', false, 1),
-
 -- Plate Compactor accessories (2L petrol default)
 (7, '2L Petrol', 'default', 1, 'Standard petrol fuel supply', true, 1),
 (7, 'Water Tank', 'default', 1, 'Water tank for dust suppression', false, 1),
 (7, 'Rubber Mat', 'default', 1, 'Protective rubber mat', false, 1),
-
 -- Angle Grinder accessories
 (8, 'Cutting Discs', 'default', 5, '230mm cutting discs', true, 1),
 (8, 'Safety Guard', 'default', 1, 'Protective safety guard', false, 1),
-
 -- Core Drill accessories
 (9, 'Diamond Bits Set', 'default', 1, 'Complete set of diamond core bits', false, 1),
 (9, 'Water Pump', 'default', 1, 'Cooling water circulation pump', false, 1),
-
 -- Mini Loader accessories (10L petrol default)
 (10, '10L Petrol', 'default', 1, 'Standard petrol fuel supply', true, 1),
 (10, 'Standard Bucket', 'default', 1, '0.3m³ capacity bucket', false, 1),

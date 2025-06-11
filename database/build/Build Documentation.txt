@@ -43,6 +43,7 @@ This document explains what each SQL file does in the database rebuild process. 
 - `contacts`: Customer contact persons
 - `sites`: Customer delivery and billing sites
 - `equipment_categories`: Equipment types for rental (generic, not specific units)
+- `equipment_accessories `: Accessories for each equipment_categories (with defaults)
 - `equipment_pricing`: Pricing by customer type (company vs individual)
 - Creates generic customer/contact (ID 999) for application processes
 - **Dependencies**: 03_schemas.sql
@@ -63,6 +64,7 @@ This document explains what each SQL file does in the database rebuild process. 
 - `interactions`: Universal entry point for all customer interactions
 - `component_customer_details`: Customer detail components
 - `component_equipment_list`: Equipment list components
+- `component_accessories_list`: Accessories (for each equipment) list component
 - `component_hire_details`: Hire-specific details
 - `component_offhire_details`: Off-hire/collection details
 - `component_breakdown_details`: Equipment breakdown details

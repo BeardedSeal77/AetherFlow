@@ -44,6 +44,8 @@ CREATE INDEX idx_equipment_categories_code ON core.equipment_categories(category
 CREATE INDEX idx_equipment_categories_name ON core.equipment_categories USING gin(to_tsvector('english', category_name));
 CREATE INDEX idx_equipment_categories_active ON core.equipment_categories(is_active);
 
+CREATE INDEX idx_equipment_accessories_category ON core.equipment_accessories(equipment_category_id);
+
 -- Equipment pricing indexes
 CREATE INDEX idx_equipment_pricing_category ON core.equipment_pricing(equipment_category_id, customer_type) WHERE is_active = true;
 CREATE INDEX idx_equipment_pricing_effective ON core.equipment_pricing(effective_from, effective_until) WHERE is_active = true;

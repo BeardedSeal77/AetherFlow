@@ -1,10 +1,10 @@
 -- =============================================================================
--- INTERACTIONS: IMPROVED EQUIPMENT OFF-HIRE/COLLECTION PROCESSING
+-- INTERACTIONS: NORMALIZED EQUIPMENT OFF-HIRE/COLLECTION PROCESSING
 -- =============================================================================
--- Purpose: Process equipment off-hire/collection requests from customers
+-- Purpose: Process equipment off-hire/collection requests using standardized helpers
 -- Creates off-hire interaction with equipment list and collection details
--- Creates driver task for equipment collection using helper functions
--- Simplified and optimized version using helper functions
+-- Uses normalized helper functions for consistency with hire process
+-- Updated: 2025-06-11 - Normalized to match create_hire approach
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
@@ -12,25 +12,21 @@ SET search_path TO core, interactions, tasks, security, system, public;
 -- Drop existing function if it exists
 DROP FUNCTION IF EXISTS interactions.create_off_hire;
 
--- Create the improved off-hire processing procedure
+-- Create the normalized off-hire processing procedure
 CREATE OR REPLACE FUNCTION interactions.create_off_hire(
-    -- Required off-hire details
+    -- Required off-hire details (matching hire pattern)
     p_customer_id INTEGER,
     p_contact_id INTEGER,
     p_site_id INTEGER,
-    p_equipment_list JSONB,         -- [{"equipment_category_id": 5, "quantity": 2, "special_requirements": "..."}]
-    p_collect_date DATE,
-    p_priority VARCHAR(20) DEFAULT 'medium',  -- Employee selects priority
+    p_equipment_list JSONB,         -- [{"equipment_category_id": 5, "quantity": 2}]
+    p_hire_end_date DATE,
+    p_collection_date DATE,
     
-    -- Optional collection details
-    p_collect_time TIME DEFAULT '14:00'::TIME,
-    p_end_date DATE DEFAULT NULL,
-    p_end_time TIME DEFAULT NULL,
-    p_collection_method VARCHAR(50) DEFAULT 'collect',
+    -- Optional details
+    p_collection_time TIME DEFAULT '14:00'::TIME,
+    p_notes TEXT DEFAULT NULL,
+    p_priority VARCHAR(20) DEFAULT 'medium',
     p_early_return BOOLEAN DEFAULT false,
-    p_special_instructions TEXT DEFAULT NULL,
-    p_contact_method VARCHAR(50) DEFAULT 'phone',
-    p_initial_notes TEXT DEFAULT NULL,
     
     -- System details
     p_employee_id INTEGER DEFAULT NULL,
@@ -41,135 +37,128 @@ RETURNS TABLE(
     message TEXT,
     interaction_id INTEGER,
     reference_number VARCHAR(20),
-    offhire_component_id INTEGER,
     driver_task_id INTEGER,
-    assigned_driver TEXT,
-    collection_date DATE,
-    estimated_collection_time TIME,
+    assigned_driver_name TEXT,
     equipment_count INTEGER,
     total_quantity INTEGER
-) AS $OFF_HIRE$
+) AS $NORMALIZED_OFF_HIRE$
 DECLARE
     v_interaction_id INTEGER;
-    v_offhire_component_id INTEGER;
     v_driver_task_id INTEGER;
+    v_assigned_driver_name TEXT;
     v_reference_number VARCHAR(20);
     v_employee_id INTEGER;
-    v_employee_name TEXT;
     v_customer_name TEXT;
     v_contact_name TEXT;
-    v_site_name TEXT;
+    v_contact_phone TEXT;
     v_site_address TEXT;
-    v_driver_employee_name TEXT;
     v_equipment_summary TEXT;
     v_validation_errors TEXT[] := '{}';
     v_equipment_item JSONB;
     v_equipment_count INTEGER := 0;
     v_total_quantity INTEGER := 0;
+    v_task_status VARCHAR(50);
     
-    -- Task scheduling variables
-    v_estimated_duration INTEGER := 60; -- 1 hour default (shorter than delivery)
-    v_scheduled_date DATE;
-    v_scheduled_time TIME;
 BEGIN
     -- =============================================================================
-    -- AUTHENTICATION & AUTHORIZATION (simplified)
+    -- AUTHENTICATION USING HELPER FUNCTION (same as hire)
     -- =============================================================================
     
-    -- Get employee ID (simplified authentication)
-    v_employee_id := COALESCE(
-        p_employee_id, 
-        NULLIF(current_setting('app.current_employee_id', true), '')::INTEGER
-    );
+    -- Use security helper for session validation if token provided
+    IF p_session_token IS NOT NULL THEN
+        SELECT valid, employee_id INTO v_employee_id, v_employee_id
+        FROM security.validate_session(p_session_token);
+        
+        IF v_employee_id IS NULL THEN
+            RETURN QUERY SELECT false, 'Invalid or expired session token'::TEXT, 
+                NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+            RETURN;
+        END IF;
+    ELSE
+        v_employee_id := p_employee_id;
+    END IF;
     
+    -- Basic authentication check
     IF v_employee_id IS NULL THEN
         RETURN QUERY SELECT false, 'Employee authentication required'::TEXT, 
-            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
         RETURN;
     END IF;
     
-    -- Get employee details
-    SELECT e.name || ' ' || e.surname INTO v_employee_name
-    FROM core.employees e WHERE e.id = v_employee_id;
-    
     -- =============================================================================
-    -- VALIDATION (simplified using helper pattern)
+    -- INPUT VALIDATION
     -- =============================================================================
     
-    -- Validate customer, contact, and site in one query
-    SELECT 
-        c.company_name,
-        ct.name || ' ' || ct.surname,
-        s.site_name,
-        s.address
-    INTO v_customer_name, v_contact_name, v_site_name, v_site_address
-    FROM core.customers c
-    JOIN core.contacts ct ON ct.id = p_contact_id AND ct.customer_id = c.id
-    JOIN core.sites s ON s.id = p_site_id AND s.customer_id = c.id
-    WHERE c.id = p_customer_id;
-    
-    IF v_customer_name IS NULL THEN
-        RETURN QUERY SELECT false, 
-            'Invalid customer, contact, or site data. Please verify selections.'::TEXT,
-            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
-        RETURN;
+    -- Required field validation
+    IF p_customer_id IS NULL OR p_contact_id IS NULL OR p_site_id IS NULL THEN
+        v_validation_errors := array_append(v_validation_errors, 'Customer, contact, and site are required');
     END IF;
     
-    -- Quick validation checks
-    IF jsonb_array_length(p_equipment_list) = 0 THEN
-        v_validation_errors := v_validation_errors || 'Equipment list cannot be empty';
+    IF p_equipment_list IS NULL OR jsonb_array_length(p_equipment_list) = 0 THEN
+        v_validation_errors := array_append(v_validation_errors, 'At least one equipment item is required');
     END IF;
     
-    IF p_collect_date < CURRENT_DATE THEN
-        v_validation_errors := v_validation_errors || 'Collection date cannot be in the past';
+    IF p_hire_end_date IS NULL OR p_collection_date IS NULL THEN
+        v_validation_errors := array_append(v_validation_errors, 'Hire end date and collection date are required');
+    END IF;
+    
+    IF p_collection_date < p_hire_end_date THEN
+        v_validation_errors := array_append(v_validation_errors, 'Collection date cannot be before hire end date');
     END IF;
     
     -- Return validation errors if any
     IF array_length(v_validation_errors, 1) > 0 THEN
-        RETURN QUERY SELECT false, 
-            ('Validation errors: ' || array_to_string(v_validation_errors, '; '))::TEXT,
-            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
+        RETURN QUERY SELECT false, array_to_string(v_validation_errors, '; ')::TEXT, 
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
         RETURN;
     END IF;
     
     -- =============================================================================
-    -- BUILD EQUIPMENT SUMMARY AND COUNT (simplified)
+    -- GET CUSTOMER, CONTACT, AND SITE DETAILS (same as hire)
     -- =============================================================================
     
-    v_equipment_summary := '';
+    -- Get customer details
+    SELECT customer_name INTO v_customer_name
+    FROM core.customers
+    WHERE id = p_customer_id AND status = 'active';
     
-    FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
-    LOOP
-        v_equipment_count := v_equipment_count + 1;
-        v_total_quantity := v_total_quantity + (v_equipment_item->>'quantity')::INTEGER;
-        
-        -- Build summary efficiently
-        SELECT category_name INTO v_equipment_summary
-        FROM core.equipment_categories 
-        WHERE id = (v_equipment_item->>'equipment_category_id')::INTEGER;
-        
-        v_equipment_summary := COALESCE(v_equipment_summary, '') || 
-            CASE WHEN v_equipment_summary != '' THEN ', ' ELSE '' END ||
-            v_equipment_summary || ' x' || (v_equipment_item->>'quantity');
-    END LOOP;
-    
-    -- =============================================================================
-    -- TASK SCHEDULING (simplified)
-    -- =============================================================================
-    
-    -- Adjust duration for large collections
-    IF v_total_quantity > 5 THEN
-        v_estimated_duration := v_estimated_duration + 20;
+    IF v_customer_name IS NULL THEN
+        RETURN QUERY SELECT false, 'Customer not found or inactive'::TEXT, 
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+        RETURN;
     END IF;
     
-    v_scheduled_date := p_collect_date;
-    v_scheduled_time := p_collect_time;
+    -- Get contact details
+    SELECT first_name || ' ' || last_name, phone_number
+    INTO v_contact_name, v_contact_phone
+    FROM core.contacts
+    WHERE id = p_contact_id AND customer_id = p_customer_id AND status = 'active';
+    
+    IF v_contact_name IS NULL THEN
+        RETURN QUERY SELECT false, 'Contact not found or not associated with customer'::TEXT, 
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+        RETURN;
+    END IF;
+    
+    -- Get site details with proper address formatting
+    SELECT site_name,
+           TRIM(COALESCE(address_line1, '') || 
+               CASE WHEN address_line2 IS NOT NULL AND TRIM(address_line2) != '' 
+                    THEN ', ' || address_line2 ELSE '' END ||
+               CASE WHEN city IS NOT NULL AND TRIM(city) != '' 
+                    THEN ', ' || city ELSE '' END)
+    INTO v_site_address, v_site_address
+    FROM core.sites
+    WHERE id = p_site_id AND customer_id = p_customer_id AND status = 'active';
+    
+    IF v_site_address IS NULL THEN
+        RETURN QUERY SELECT false, 'Site not found or not associated with customer'::TEXT, 
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+        RETURN;
+    END IF;
     
     -- =============================================================================
-    -- GENERATE REFERENCE NUMBER
+    -- GENERATE REFERENCE NUMBER USING HELPER
     -- =============================================================================
     
     v_reference_number := system.generate_reference_number('off_hire');
@@ -194,36 +183,13 @@ BEGIN
         p_contact_id,
         v_employee_id,
         'off_hire',
-        'pending',
+        'processing',
         v_reference_number,
-        p_contact_method,
-        COALESCE(p_initial_notes, 'Equipment collection requested from ' || v_site_name || 
-                 ' on ' || p_collect_date || 
-                 CASE WHEN p_early_return THEN ' (Early return)' ELSE '' END),
+        'system',
+        p_notes,
         CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP
     ) RETURNING id INTO v_interaction_id;
-    
-    -- =============================================================================
-    -- CREATE EQUIPMENT LIST COMPONENT (Layer 2) - simplified
-    -- =============================================================================
-    
-    FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
-    LOOP
-        INSERT INTO interactions.component_equipment_list (
-            interaction_id,
-            equipment_category_id,
-            quantity,
-            special_requirements,
-            created_at
-        ) VALUES (
-            v_interaction_id,
-            (v_equipment_item->>'equipment_category_id')::INTEGER,
-            (v_equipment_item->>'quantity')::INTEGER,
-            'COLLECTION: ' || COALESCE(v_equipment_item->>'special_requirements', 'Standard collection'),
-            CURRENT_TIMESTAMP
-        );
-    END LOOP;
     
     -- =============================================================================
     -- CREATE OFF-HIRE DETAILS COMPONENT (Layer 2)
@@ -238,124 +204,102 @@ BEGIN
         end_time,
         collection_method,
         early_return,
-        special_instructions,
+        condition_notes,
         created_at
     ) VALUES (
         v_interaction_id,
         p_site_id,
-        p_collect_date,
-        p_collect_time,
-        p_end_date,
-        p_end_time,
-        p_collection_method,
+        p_collection_date,
+        p_collection_time,
+        p_hire_end_date,
+        p_collection_time, -- Use collection time as end time
+        'collect',
         p_early_return,
-        p_special_instructions,
+        p_notes,
         CURRENT_TIMESTAMP
-    ) RETURNING id INTO v_offhire_component_id;
-    
-    -- =============================================================================
-    -- CREATE DRIVER TASK USING HELPER FUNCTION (Layer 3)
-    -- =============================================================================
-    
-    SELECT task_id, assigned_driver_name 
-    INTO v_driver_task_id, v_driver_employee_name
-    FROM tasks.create_driver_task(
-        v_interaction_id,
-        'collection',
-        p_priority,
-        v_customer_name,
-        v_contact_name,
-        (SELECT phone_number FROM core.contacts WHERE id = p_contact_id),
-        v_site_address,
-        v_equipment_summary,
-        v_scheduled_date,
-        v_scheduled_time,
-        v_estimated_duration,
-        CASE WHEN p_collection_method = 'collect' 
-             THEN 'COLLECTION: ' || COALESCE(p_special_instructions, 'Standard collection')
-             ELSE 'COUNTER RETURN: Customer returning to depot' END ||
-             CASE WHEN p_early_return THEN ' (EARLY RETURN)' ELSE '' END,
-        CASE WHEN p_priority IN ('urgent', 'critical') THEN 
-             (SELECT driver_id FROM tasks.find_available_driver(v_scheduled_date, p_priority) 
-              ORDER BY availability_score DESC LIMIT 1)
-             ELSE NULL END,
-        v_employee_id
     );
     
     -- =============================================================================
-    -- CREATE DRIVER TASK EQUIPMENT ASSIGNMENTS (simplified)
+    -- CREATE EQUIPMENT LIST COMPONENT (Layer 2)
     -- =============================================================================
     
+    -- Process equipment items and build summary
     FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
     LOOP
-        INSERT INTO tasks.drivers_task_equipment (
-            drivers_task_id,
+        -- Insert equipment item
+        INSERT INTO interactions.component_equipment_list (
+            interaction_id,
             equipment_category_id,
             quantity,
-            purpose,
-            condition_notes,
+            special_requirements,
             created_at
         ) VALUES (
-            v_driver_task_id,
+            v_interaction_id,
             (v_equipment_item->>'equipment_category_id')::INTEGER,
             (v_equipment_item->>'quantity')::INTEGER,
-            'collection',
-            'FOR COLLECTION: ' ||
-            CASE WHEN p_early_return THEN 'Early return - ' ELSE '' END ||
-            COALESCE(v_equipment_item->>'special_requirements', 'Check condition on collection'),
+            COALESCE(v_equipment_item->>'special_requirements', 'COLLECTION: Standard equipment return'),
             CURRENT_TIMESTAMP
         );
+        
+        -- Update counters
+        v_equipment_count := v_equipment_count + 1;
+        v_total_quantity := v_total_quantity + (v_equipment_item->>'quantity')::INTEGER;
     END LOOP;
     
+    -- Build equipment summary for driver task
+    SELECT string_agg(ec.category_name || ' (x' || el.quantity || ')', ', ')
+    INTO v_equipment_summary
+    FROM interactions.component_equipment_list el
+    JOIN core.equipment_categories ec ON ec.id = el.equipment_category_id
+    WHERE el.interaction_id = v_interaction_id;
+    
     -- =============================================================================
-    -- AUDIT LOGGING (simplified)
+    -- CREATE DRIVER TASK USING NORMALIZED HELPER (Layer 3)
     -- =============================================================================
     
-    INSERT INTO security.audit_log (
-        employee_id,
-        action,
-        table_name,
-        record_id,
-        new_values,
-        ip_address,
-        created_at
-    ) VALUES (
-        v_employee_id,
-        'create_off_hire',
-        'interactions',
-        v_interaction_id,
-        jsonb_build_object(
-            'reference_number', v_reference_number,
-            'customer_name', v_customer_name,
-            'equipment_count', v_equipment_count,
-            'total_quantity', v_total_quantity,
-            'collection_date', p_collect_date,
-            'assigned_driver', v_driver_employee_name,
-            'created_by', v_employee_name
-        ),
-        inet_client_addr(),
-        CURRENT_TIMESTAMP
+    SELECT task_id, assigned_driver_name, task_status
+    INTO v_driver_task_id, v_assigned_driver_name, v_task_status
+    FROM tasks.create_driver_task(
+        v_interaction_id,                   -- interaction_id
+        'collection',                       -- task_type (different from hire)
+        p_priority,                         -- priority
+        v_customer_name,                    -- customer_name
+        v_contact_name,                     -- contact_name
+        v_contact_phone,                    -- contact_phone
+        v_site_address,                     -- site_address
+        v_equipment_summary,                -- equipment_summary
+        p_collection_date,                  -- scheduled_date
+        p_collection_time,                  -- scheduled_time
+        60,                                 -- estimated_duration (60 minutes - shorter than delivery)
+        CASE WHEN p_early_return THEN 'EARLY RETURN: ' || COALESCE(p_notes, 'Equipment return ahead of schedule')
+             ELSE p_notes END,              -- special_instructions
+        NULL,                              -- assigned_to (no driver assigned initially)
+        v_employee_id                      -- created_by
     );
     
     -- =============================================================================
-    -- RETURN SUCCESS
+    -- UPDATE INTERACTION STATUS
+    -- =============================================================================
+    
+    UPDATE interactions.interactions 
+    SET status = 'active', updated_at = CURRENT_TIMESTAMP
+    WHERE id = v_interaction_id;
+    
+    -- =============================================================================
+    -- RETURN SUCCESS RESULT
     -- =============================================================================
     
     RETURN QUERY SELECT 
         true,
-        ('Off-hire ' || v_reference_number || ' created for ' || v_customer_name || '. ' ||
-         'Collection scheduled for ' || p_collect_date || ' at ' || p_collect_time || '. ' ||
-         CASE WHEN v_driver_employee_name IS NOT NULL
-              THEN 'Driver ' || v_driver_employee_name || ' assigned.'
-              ELSE 'Collection task created for assignment.'
-         END)::TEXT,
+        ('Off-hire request processed successfully. Reference: ' || v_reference_number || 
+         '. Equipment: ' || v_equipment_count || ' items (' || v_total_quantity || ' total quantity). ' ||
+         'Driver task created for collection on ' || p_collection_date || 
+         ' at ' || p_collection_time || 
+         CASE WHEN p_early_return THEN ' (Early return)' ELSE '' END || '.')::TEXT,
         v_interaction_id,
         v_reference_number,
-        v_offhire_component_id,
         v_driver_task_id,
-        v_driver_employee_name,
-        v_scheduled_date,
-        v_scheduled_time,
+        COALESCE(v_assigned_driver_name, 'Unassigned'),
         v_equipment_count,
         v_total_quantity;
         
@@ -363,93 +307,89 @@ EXCEPTION
     WHEN unique_violation THEN
         RETURN QUERY SELECT 
             false, 
-            'Duplicate off-hire request detected.'::TEXT,
-            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
+            'Duplicate off-hire request detected. Reference number already exists.'::TEXT,
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
             
     WHEN foreign_key_violation THEN
         RETURN QUERY SELECT 
             false, 
             'Invalid reference data. Please verify customer, contact, site, and equipment selections.'::TEXT,
-            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
             
     WHEN OTHERS THEN
         RETURN QUERY SELECT 
             false, 
             ('System error occurred: ' || SQLERRM)::TEXT,
-            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
 END;
-$OFF_HIRE$ LANGUAGE plpgsql SECURITY DEFINER;
+$NORMALIZED_OFF_HIRE$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================================================
 -- FUNCTION PERMISSIONS & COMMENTS
 -- =============================================================================
 
+-- Grant execute permissions to appropriate roles
+GRANT EXECUTE ON FUNCTION interactions.create_off_hire TO PUBLIC;
+
 COMMENT ON FUNCTION interactions.create_off_hire IS 
-'Improved equipment off-hire/collection processing using helper functions.
+'Normalized equipment off-hire/collection processing procedure using standardized helper functions.
 Creates off-hire interaction with equipment list and collection details.
-Uses standardized driver task creation and assignment helpers.
-Simplified validation and error handling for better maintainability.';
+Uses same helper pattern as create_hire for consistency: security.validate_session(),
+system.generate_reference_number(), and tasks.create_driver_task().
+Handles early returns and equipment condition documentation.
+Reference prefix: OH (Off-Hire), task type: collection.';
 
 -- =============================================================================
 -- USAGE EXAMPLES
 -- =============================================================================
 
 /*
--- Example 1: Standard collection using improved procedure
+-- Example 1: Standard off-hire request
 SELECT * FROM interactions.create_off_hire(
-    1000,                                   -- p_customer_id (ABC Construction)
-    1000,                                   -- p_contact_id (John Guy)
-    1001,                                   -- p_site_id (Sandton Project Site)
+    1000,                                   -- customer_id
+    1000,                                   -- contact_id  
+    1001,                                   -- site_id
     '[
         {
             "equipment_category_id": 5,
             "quantity": 1,
-            "special_requirements": "Check for damage"
+            "special_requirements": "Check for any damage"
         },
         {
             "equipment_category_id": 8,
             "quantity": 2,
             "special_requirements": "Clean before return"
         }
-    ]'::jsonb,                             -- p_equipment_list
-    '2025-06-10',                          -- p_collect_date
-    'medium',                              -- p_priority
-    '13:00'::TIME,                         -- p_collect_time
-    '2025-06-10',                          -- p_end_date
-    '12:00'::TIME,                         -- p_end_time
-    'collect',                             -- p_collection_method
-    false,                                 -- p_early_return
-    'Equipment ready for collection at main gate.',
-    'phone',                               -- p_contact_method
-    'Customer called requesting collection - project completed',
-    1001                                   -- p_employee_id
+    ]'::jsonb,                             -- equipment_list
+    '2025-06-15',                          -- hire_end_date
+    '2025-06-15',                          -- collection_date
+    '14:00'::TIME,                         -- collection_time
+    'Equipment ready at main gate',        -- notes
+    'medium',                              -- priority
+    false,                                 -- early_return
+    1001,                                  -- employee_id
+    NULL                                   -- session_token
 );
 
--- Example 2: Urgent collection with auto driver assignment
+-- Example 2: Urgent early return
 SELECT * FROM interactions.create_off_hire(
-    1001,                                   -- p_customer_id
-    1002,                                   -- p_contact_id
-    1002,                                   -- p_site_id
+    1001,                                   -- customer_id
+    1002,                                   -- contact_id
+    1002,                                   -- site_id
     '[
         {
             "equipment_category_id": 3,
             "quantity": 1,
-            "special_requirements": "URGENT: Site closing soon"
+            "special_requirements": "Project completed early"
         }
-    ]'::jsonb,                             -- p_equipment_list
-    CURRENT_DATE,                          -- p_collect_date (today - urgent)
-    'urgent',                              -- p_priority (auto-assigns driver)
-    '15:00'::TIME,                         -- p_collect_time
-    CURRENT_DATE,                          -- p_end_date
-    '14:30'::TIME,                         -- p_end_time
-    'collect',                             -- p_collection_method
-    true,                                  -- p_early_return
-    'URGENT: Site must be cleared immediately for inspection.',
-    'phone',                               -- p_contact_method
-    'URGENT COLLECTION: Customer needs immediate pickup',
-    1001                                   -- p_employee_id
+    ]'::jsonb,                             -- equipment_list
+    '2025-06-20',                          -- hire_end_date (originally scheduled)
+    CURRENT_DATE,                          -- collection_date (today - early)
+    '10:00'::TIME,                         -- collection_time
+    'Project finished ahead of schedule',   -- notes
+    'high',                                -- priority
+    true,                                  -- early_return
+    NULL,                                  -- employee_id (using session)
+    'session_token_here'                   -- session_token
 );
 */
