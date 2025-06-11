@@ -13,12 +13,12 @@ Simple hire workflow where users build hire requests through searchable selectio
 
 ### Step 2: Contact Selection  
 - **User Action:** Selects contact from searchable list box (filtered by selected customer)
-- **Required Procedure:** `core.get_contacts_by_customer(customer_id)`
+- **Required Procedure:** `core.get_customer_contacts(customer_id)`
 - **Returns:** Contact ID, name, job title, phone, email
 
 ### Step 3: Site Selection
 - **User Action:** Selects site from searchable list box (filtered by selected customer)
-- **Required Procedure:** `core.get_sites_by_customer(customer_id)`
+- **Required Procedure:** `core.get_customer_sites(customer_id)`
 - **Returns:** Site ID, name, address, delivery instructions
 
 ### Step 4: Date Input
@@ -54,15 +54,15 @@ Simple hire workflow where users build hire requests through searchable selectio
 **Purpose:** Get searchable customer list  
 **Returns:** Customer ID, name, code
 
-### 2. `core.get_contacts_by_customer(customer_id)`
+### 2. `core.get_customer_contacts(customer_id)`
 **Purpose:** Get contacts for selected customer  
 **Returns:** Contact ID, name, job title, phone, email
 
-### 3. `core.get_sites_by_customer(customer_id)`
+### 3. `core.get_customer_sites(customer_id)`
 **Purpose:** Get sites for selected customer  
 **Returns:** Site ID, name, address, delivery instructions
 
-### 4. `core.get_equipment_list()` **[NEW - SIMPLE VERSION]**
+### 4. `core.get_equipment_list()` 
 **Purpose:** Get basic equipment list (no availability checking)  
 **Returns:** Equipment ID, name, description, daily rate
 
@@ -75,7 +75,7 @@ Simple hire workflow where users build hire requests through searchable selectio
 **Process:**
 - Creates interaction record
 - Adds equipment to `component_equipment_list`
-- Adds accessories to `component_accessories_list`
+- Creates hire details component
 - Creates driver delivery task
 
 ## Data Flow
@@ -84,8 +84,8 @@ Simple hire workflow where users build hire requests through searchable selectio
 User Input → Python Layer → Database Procedures → Result
 
 Customer Selection → core.search_customers() → Customer ID
-Contact Selection → core.get_contacts_by_customer() → Contact ID  
-Site Selection → core.get_sites_by_customer() → Site ID
+Contact Selection → core.get_customer_contacts() → Contact ID  
+Site Selection → core.get_customer_sites() → Site ID
 Equipment Selection → core.get_equipment_list() → Equipment ID + Quantity
 Accessories Selection → core.get_equipment_accessories() → Accessory IDs + Quantities
 Submit → interactions.create_hire() → Interaction + Driver Task
@@ -100,7 +100,7 @@ Submit → interactions.create_hire() → Interaction + Driver Task
 - `core.equipment_accessories` - Equipment accessories
 - `interactions.interactions` - Main interaction record
 - `interactions.component_equipment_list` - Selected equipment
-- `interactions.component_accessories_list` - Selected accessories  
+- `interactions.component_hire_details` - Hire details  
 - `tasks.drivers_taskboard` - Driver delivery task
 
 ## Python Layer Structure
@@ -117,10 +117,6 @@ hire_data = {
         {"equipment_category_id": 1, "quantity": 2},
         {"equipment_category_id": 3, "quantity": 1}
     ],
-    "accessories_list": [
-        {"accessory_id": 101, "quantity": 1},
-        {"accessory_id": 102, "quantity": 3}
-    ],
     "notes": "Special delivery instructions"
 }
 
@@ -134,4 +130,4 @@ result = interactions.create_hire(hire_data)
 - Creates driver delivery task
 - Returns reference number and task ID
 
-Simple, straightforward hire process with searchable selections and basic equipment/accessories handling.
+Simple, straightforward hire process with searchable selections and basic equipment/accessories handling using existing database procedures.

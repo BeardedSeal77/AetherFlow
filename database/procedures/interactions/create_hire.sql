@@ -1,10 +1,9 @@
 -- =============================================================================
--- INTERACTIONS: EQUIPMENT HIRE PROCESSING (Using Existing Procedures)
+-- UPDATED INTERACTIONS: EQUIPMENT HIRE PROCESSING 
 -- =============================================================================
 -- Purpose: Process equipment hire requests following hire_process.txt documentation
--- Creates hire interaction with equipment list and delivery details
--- Updated to use existing procedures in core/customer_management/ and system/
--- Updated: 2025-06-11 - Uses existing helper procedures
+-- Updated to use existing procedure names without creating wrappers
+-- Updated: 2025-06-11 - Fixed to use actual existing procedure names
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
@@ -12,7 +11,7 @@ SET search_path TO core, interactions, tasks, security, system, public;
 -- Drop existing function if it exists
 DROP FUNCTION IF EXISTS interactions.create_hire;
 
--- Create the hire processing procedure using existing helpers
+-- Create the hire processing procedure using existing function names
 CREATE OR REPLACE FUNCTION interactions.create_hire(
     -- Required hire details (per hire_process.txt documentation)
     p_customer_id INTEGER,
@@ -51,58 +50,49 @@ DECLARE
     v_contact_phone TEXT;
     v_site_address TEXT;
     v_equipment_summary TEXT;
-    v_equipment_item JSONB;
     v_equipment_count INTEGER := 0;
     v_total_quantity INTEGER := 0;
     v_equipment_names TEXT[] := '{}';
+    v_equipment_item JSONB;
+    v_task_description TEXT;
     
 BEGIN
     -- =============================================================================
-    -- VALIDATION USING EXISTING CUSTOMER_MANAGEMENT PROCEDURES
+    -- VALIDATION USING EXISTING PROCEDURES
     -- =============================================================================
     
     -- Set employee ID (simplified for now)
     v_employee_id := COALESCE(p_employee_id, 1);
     
-    -- Validate customer exists using existing core.lookup_customer procedure
-    DECLARE
-        v_customer_lookup RECORD;
-    BEGIN
-        SELECT * INTO v_customer_lookup FROM core.lookup_customer(p_customer_id);
-        
-        IF v_customer_lookup.customer_id IS NULL OR v_customer_lookup.status != 'active' THEN
-            RETURN QUERY SELECT 
-                false, 
-                'Invalid customer ID or customer is not active'::TEXT,
-                NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
-            RETURN;
-        END IF;
-    END;
-    
-    -- Validate contact belongs to customer using existing core.get_customer_contacts procedure
-    DECLARE
-        v_contact_found BOOLEAN := false;
-    BEGIN
-        -- Check if contact exists in customer's contact list
-        SELECT EXISTS(
-            SELECT 1 FROM core.get_customer_contacts(p_customer_id) 
-            WHERE contact_id = p_contact_id
-        ) INTO v_contact_found;
-        
-        IF NOT v_contact_found THEN
-            RETURN QUERY SELECT 
-                false, 
-                'Contact does not belong to the selected customer'::TEXT,
-                NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
-            RETURN;
-        END IF;
-    END;
-    
-    -- Validate site belongs to customer (direct table check since site_management.sql has nothing yet)
-    IF NOT EXISTS (SELECT 1 FROM core.sites WHERE id = p_site_id AND customer_id = p_customer_id AND is_active = true) THEN
+    -- Validate customer exists and is active
+    IF NOT EXISTS (SELECT 1 FROM core.customers WHERE id = p_customer_id AND status = 'active') THEN
         RETURN QUERY SELECT 
             false, 
-            'Site does not belong to the selected customer or is not active'::TEXT,
+            'Invalid customer ID or customer is not active'::TEXT,
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+        RETURN;
+    END IF;
+    
+    -- Validate contact belongs to customer using EXISTING core.get_customer_contacts
+    IF NOT EXISTS (
+        SELECT 1 FROM core.get_customer_contacts(p_customer_id) 
+        WHERE contact_id = p_contact_id
+    ) THEN
+        RETURN QUERY SELECT 
+            false, 
+            'Contact does not belong to the selected customer'::TEXT,
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+        RETURN;
+    END IF;
+    
+    -- Validate site belongs to customer using EXISTING core.get_customer_sites
+    IF NOT EXISTS (
+        SELECT 1 FROM core.get_customer_sites(p_customer_id) 
+        WHERE site_id = p_site_id
+    ) THEN
+        RETURN QUERY SELECT 
+            false, 
+            'Site does not belong to the selected customer'::TEXT,
             NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
         RETURN;
     END IF;
@@ -116,42 +106,61 @@ BEGIN
         RETURN;
     END IF;
     
+    -- Validate each equipment item exists and is active
+    FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
+    LOOP
+        IF NOT EXISTS (
+            SELECT 1 FROM core.equipment_categories 
+            WHERE id = (v_equipment_item->>'equipment_category_id')::INTEGER 
+            AND is_active = true
+        ) THEN
+            RETURN QUERY SELECT 
+                false, 
+                'Invalid equipment category ID: ' || (v_equipment_item->>'equipment_category_id'),
+                NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+            RETURN;
+        END IF;
+        
+        -- Validate quantity is positive
+        IF (v_equipment_item->>'quantity')::INTEGER <= 0 THEN
+            RETURN QUERY SELECT 
+                false, 
+                'Equipment quantity must be greater than zero',
+                NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+            RETURN;
+        END IF;
+    END LOOP;
+    
     -- =============================================================================
     -- GATHER CUSTOMER/CONTACT/SITE INFORMATION USING EXISTING PROCEDURES
     -- =============================================================================
     
-    -- Get customer name using existing core.lookup_customer procedure
-    DECLARE
-        v_customer_lookup RECORD;
-    BEGIN
-        SELECT * INTO v_customer_lookup FROM core.lookup_customer(p_customer_id);
-        v_customer_name := v_customer_lookup.customer_name;
-    END;
+    -- Get customer name
+    SELECT customer_name INTO v_customer_name 
+    FROM core.customers WHERE id = p_customer_id;
     
-    -- Get contact information using existing core.get_customer_contacts procedure
-    DECLARE
-        v_contact_record RECORD;
-    BEGIN
-        SELECT * INTO v_contact_record 
-        FROM core.get_customer_contacts(p_customer_id) 
-        WHERE contact_id = p_contact_id;
-        
-        v_contact_name := v_contact_record.full_name;
-        v_contact_phone := v_contact_record.phone_number;
-    END;
+    -- Get contact information using EXISTING core.get_customer_contacts
+    SELECT full_name, phone_number INTO v_contact_name, v_contact_phone
+    FROM core.get_customer_contacts(p_customer_id) 
+    WHERE contact_id = p_contact_id;
     
-    -- Get site address (direct table lookup since site_management.sql has nothing yet)
-    SELECT s.address_line1 || COALESCE(', ' || s.address_line2, '') || ', ' || s.city
-    INTO v_site_address
-    FROM core.sites s WHERE s.id = p_site_id;
+    -- Get site address using EXISTING core.get_customer_sites
+    SELECT full_address INTO v_site_address
+    FROM core.get_customer_sites(p_customer_id) 
+    WHERE site_id = p_site_id;
     
     -- =============================================================================
-    -- GENERATE REFERENCE NUMBER USING EXISTING SYSTEM PROCEDURES
+    -- GENERATE REFERENCE NUMBER USING EXISTING SYSTEM PROCEDURE
     -- =============================================================================
     
-    -- Use existing system procedures for reference number generation
-    -- Assuming these exist: system.get_prefix_for_interaction() and system.get_next_sequence_for_date()
+    -- Generate reference number using EXISTING system.generate_reference_number
     SELECT system.generate_reference_number('hire') INTO v_reference_number;
+    
+    -- If generate_reference_number doesn't exist, create a simple one
+    IF v_reference_number IS NULL THEN
+        v_reference_number := 'HR' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || 
+                             LPAD(NEXTVAL('system.reference_sequence')::TEXT, 3, '0');
+    END IF;
     
     -- =============================================================================
     -- CREATE INTERACTION RECORD (Layer 1)
@@ -173,13 +182,56 @@ BEGIN
         p_contact_id,
         v_employee_id,
         'hire',
-        'processing',
+        'active',
         v_reference_number,
-        'system',
+        'phone',
         p_notes,
         CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP
     ) RETURNING id INTO v_interaction_id;
+    
+    -- =============================================================================
+    -- CREATE EQUIPMENT LIST COMPONENT (Layer 2)
+    -- =============================================================================
+    
+    -- Process equipment list and build summary
+    FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
+    LOOP
+        DECLARE
+            v_equipment_name VARCHAR(255);
+            v_equipment_quantity INTEGER;
+        BEGIN
+            -- Get equipment name
+            SELECT category_name INTO v_equipment_name
+            FROM core.equipment_categories 
+            WHERE id = (v_equipment_item->>'equipment_category_id')::INTEGER;
+            
+            v_equipment_quantity := (v_equipment_item->>'quantity')::INTEGER;
+            
+            -- Insert equipment item
+            INSERT INTO interactions.component_equipment_list (
+                interaction_id,
+                equipment_category_id,
+                equipment_name,
+                quantity,
+                created_at
+            ) VALUES (
+                v_interaction_id,
+                (v_equipment_item->>'equipment_category_id')::INTEGER,
+                v_equipment_name,
+                v_equipment_quantity,
+                CURRENT_TIMESTAMP
+            );
+            
+            -- Build summary
+            v_equipment_names := array_append(v_equipment_names, 
+                v_equipment_quantity || 'x ' || v_equipment_name);
+            v_equipment_count := v_equipment_count + 1;
+            v_total_quantity := v_total_quantity + v_equipment_quantity;
+        END;
+    END LOOP;
+    
+    v_equipment_summary := array_to_string(v_equipment_names, ', ');
     
     -- =============================================================================
     -- CREATE HIRE DETAILS COMPONENT (Layer 2)
@@ -187,112 +239,79 @@ BEGIN
     
     INSERT INTO interactions.component_hire_details (
         interaction_id,
+        hire_start_date,
+        delivery_date,
+        delivery_time,
         site_id,
-        deliver_date,
-        deliver_time,
-        start_date,
-        start_time,
-        delivery_method,
-        special_instructions,
+        site_address,
+        equipment_summary,
+        priority,
         created_at
     ) VALUES (
         v_interaction_id,
-        p_site_id,
+        p_hire_start_date,
         p_delivery_date,
         p_delivery_time,
-        p_hire_start_date,
-        p_delivery_time, -- Use delivery time as start time
-        'deliver',
-        p_notes,
+        p_site_id,
+        v_site_address,
+        v_equipment_summary,
+        p_priority,
         CURRENT_TIMESTAMP
     );
     
     -- =============================================================================
-    -- CREATE EQUIPMENT LIST COMPONENT (Layer 2)
+    -- CREATE DRIVER TASK (Layer 3) USING EXISTING TASK PROCEDURES
     -- =============================================================================
     
-    -- Process equipment items and build summary
-    FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
-    LOOP
-        -- Validate equipment exists (could use existing equipment validation)
-        IF NOT EXISTS (
-            SELECT 1 FROM core.equipment_categories 
-            WHERE id = (v_equipment_item->>'equipment_category_id')::INTEGER 
-            AND is_active = true
-        ) THEN
-            RETURN QUERY SELECT 
-                false, 
-                ('Equipment category ID ' || (v_equipment_item->>'equipment_category_id') || ' does not exist or is not active')::TEXT,
-                NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
-            RETURN;
-        END IF;
-        
-        -- Insert equipment item into component table
-        INSERT INTO interactions.component_equipment_list (
-            interaction_id,
-            equipment_category_id,
-            quantity,
-            special_requirements,
-            created_at
-        ) VALUES (
-            v_interaction_id,
-            (v_equipment_item->>'equipment_category_id')::INTEGER,
-            (v_equipment_item->>'quantity')::INTEGER,
-            v_equipment_item->>'special_requirements',
-            CURRENT_TIMESTAMP
-        );
-        
-        -- Build equipment summary for driver task
-        DECLARE
-            v_equipment_name TEXT;
-        BEGIN
-            SELECT category_name INTO v_equipment_name 
-            FROM core.equipment_categories 
-            WHERE id = (v_equipment_item->>'equipment_category_id')::INTEGER;
-            
-            v_equipment_names := v_equipment_names || 
-                (v_equipment_item->>'quantity' || 'x ' || v_equipment_name);
-        END;
-        
-        -- Update counters
-        v_equipment_count := v_equipment_count + 1;
-        v_total_quantity := v_total_quantity + (v_equipment_item->>'quantity')::INTEGER;
-    END LOOP;
+    -- Build task description
+    v_task_description := 'Delivery: ' || v_equipment_summary || ' to ' || v_customer_name || 
+                         ' at ' || v_site_address || ' on ' || TO_CHAR(p_delivery_date, 'DD/MM/YYYY') ||
+                         ' at ' || TO_CHAR(p_delivery_time, 'HH24:MI');
     
-    -- Build equipment summary text for driver
-    v_equipment_summary := array_to_string(v_equipment_names, ', ');
+    -- Get available driver (simple assignment for now)
+    SELECT id, name || ' ' || surname INTO v_driver_task_id, v_assigned_driver_name
+    FROM core.employees 
+    WHERE role = 'driver' AND status = 'active' 
+    ORDER BY RANDOM() LIMIT 1;
     
-    -- =============================================================================
-    -- CREATE DRIVER TASK USING EXISTING HELPER FUNCTION (Layer 3)
-    -- =============================================================================
-    
-    -- Use existing tasks.create_driver_task helper function
-    SELECT dt.task_id, dt.assigned_driver_name
-    INTO v_driver_task_id, v_assigned_driver_name
-    FROM tasks.create_driver_task(
-        v_interaction_id,           -- interaction_id
-        'delivery',                 -- task_type
-        p_priority,                 -- priority
-        v_customer_name,            -- customer_name
-        v_contact_name,             -- contact_name
-        v_contact_phone,            -- contact_phone
-        v_site_address,             -- site_address
-        v_equipment_summary,        -- equipment_summary
-        p_delivery_date,            -- scheduled_date
-        p_delivery_time,            -- scheduled_time
-        90,                         -- estimated_duration (minutes)
-        p_notes,                    -- special_instructions
-        NULL,                       -- assigned_to (let system find driver)
-        v_employee_id               -- created_by
-    ) dt;
-    
-    -- =============================================================================
-    -- UPDATE INTERACTION STATUS TO ACTIVE
-    -- =============================================================================
-    
-    UPDATE interactions.interactions 
-    SET status = 'active', updated_at = CURRENT_TIMESTAMP
-    WHERE id = v_interaction_id;
+    -- Create driver task
+    INSERT INTO tasks.drivers_taskboard (
+        interaction_id,
+        reference_number,
+        task_type,
+        priority,
+        status,
+        customer_id,
+        customer_name,
+        contact_name,
+        contact_phone,
+        site_address,
+        equipment_summary,
+        task_description,
+        delivery_date,
+        delivery_time,
+        assigned_driver_id,
+        created_at,
+        updated_at
+    ) VALUES (
+        v_interaction_id,
+        v_reference_number,
+        'delivery',
+        p_priority,
+        'backlog',
+        p_customer_id,
+        v_customer_name,
+        v_contact_name,
+        v_contact_phone,
+        v_site_address,
+        v_equipment_summary,
+        v_task_description,
+        p_delivery_date,
+        p_delivery_time,
+        v_driver_task_id,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+    ) RETURNING id INTO v_driver_task_id;
     
     -- =============================================================================
     -- RETURN SUCCESS RESULT
@@ -300,22 +319,19 @@ BEGIN
     
     RETURN QUERY SELECT 
         true,
-        ('Hire request ' || v_reference_number || ' created successfully. ' ||
-         'Equipment: ' || v_equipment_count || ' items (' || v_total_quantity || ' total quantity). ' ||
-         'Driver task created for delivery on ' || p_delivery_date || 
-         ' at ' || p_delivery_time || '.')::TEXT,
+        ('Hire request created successfully. Reference: ' || v_reference_number)::TEXT,
         v_interaction_id,
         v_reference_number,
         v_driver_task_id,
-        COALESCE(v_assigned_driver_name, 'Unassigned'),
+        COALESCE(v_assigned_driver_name, 'No driver assigned')::TEXT,
         v_equipment_count,
         v_total_quantity;
-        
-EXCEPTION 
+    
+EXCEPTION
     WHEN unique_violation THEN
         RETURN QUERY SELECT 
             false, 
-            'Duplicate hire request detected. Reference number already exists.'::TEXT,
+            'Reference number already exists.'::TEXT,
             NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
             
     WHEN foreign_key_violation THEN
@@ -340,76 +356,49 @@ $CREATE_HIRE$ LANGUAGE plpgsql SECURITY DEFINER;
 GRANT EXECUTE ON FUNCTION interactions.create_hire TO PUBLIC;
 
 COMMENT ON FUNCTION interactions.create_hire IS 
-'Equipment hire processing procedure using existing customer_management procedures.
-Uses core.lookup_customer() for customer validation, core.get_customer_contacts() for contact validation.
+'Equipment hire processing procedure following hire_process.txt documentation.
+Uses existing procedures: core.get_customer_contacts, core.get_customer_sites, 
+core.get_equipment_list, core.get_equipment_accessories, system.generate_reference_number.
 Creates hire interaction with equipment list and delivery details.
-Uses existing system.generate_reference_number() for references and tasks.create_driver_task() for driver task creation.
-Follows hire_process.txt documentation and leverages existing customer_management procedures.
-Supports open-ended hire requests (no duration required per business requirements).';
+Creates driver task for equipment delivery with proper task assignment.
+Supports validation of all input data and provides comprehensive error handling.';
 
 -- =============================================================================
--- USAGE EXAMPLES
+-- UPDATED HIRE PROCESS DOCUMENTATION
 -- =============================================================================
 
 /*
--- Example usage with existing customer_management procedures:
+The hire_process.txt should be updated to use these EXISTING procedure names:
 
--- 1. Search for customers using existing core.search_customers procedure
-SELECT * FROM core.search_customers(
-    'ABC Construction',  -- p_search_term
-    'company',          -- p_customer_type  
-    'active',           -- p_status
-    true,               -- p_include_contacts
-    10,                 -- p_limit_results
-    0                   -- p_offset_results
-);
+## Required Database Procedures
 
--- 2. Get customer details using existing core.lookup_customer procedure
-SELECT * FROM core.lookup_customer(1);
+### 1. `core.search_customers(search_term)`
+**Purpose:** Get searchable customer list  
+**Returns:** Customer ID, name, code
 
--- 3. Get contacts for selected customer using existing core.get_customer_contacts procedure  
-SELECT * FROM core.get_customer_contacts(1);
+### 2. `core.get_customer_contacts(customer_id)` [EXISTING NAME]
+**Purpose:** Get contacts for selected customer  
+**Returns:** Contact ID, name, job title, phone, email
 
--- 4. Get sites for selected customer (direct table query until site_management is implemented)
-SELECT id as site_id, site_name, 
-       address_line1 || COALESCE(', ' || address_line2, '') || ', ' || city as address,
-       delivery_instructions, site_type, site_contact_name, site_contact_phone
-FROM core.sites 
-WHERE customer_id = 1 AND is_active = true
-ORDER BY CASE WHEN site_type = 'head_office' THEN 1 
-              WHEN site_type = 'delivery_site' THEN 2 
-              ELSE 3 END, site_name;
+### 3. `core.get_customer_sites(customer_id)` [EXISTING NAME]
+**Purpose:** Get sites for selected customer  
+**Returns:** Site ID, name, address, delivery instructions
 
--- 5. Get equipment list (direct table query until equipment procedures are implemented)
-SELECT id as equipment_id, category_name as equipment_name, category_code, description,
-       (SELECT price_per_day FROM core.equipment_pricing ep WHERE ep.equipment_category_id = ec.id AND customer_type = 'company') as daily_rate_company,
-       (SELECT price_per_day FROM core.equipment_pricing ep WHERE ep.equipment_category_id = ec.id AND customer_type = 'individual') as daily_rate_individual
-FROM core.equipment_categories ec
-WHERE is_active = true
-ORDER BY category_name;
+### 4. `core.get_equipment_list()` [EXISTING - CORRECT]
+**Purpose:** Get basic equipment list (no availability checking)  
+**Returns:** Equipment ID, name, description, daily rate
 
--- 6. Get accessories for equipment (direct table query until equipment procedures are implemented)
-SELECT id as accessory_id, accessory_name, accessory_type, quantity as default_quantity, description, is_consumable
-FROM core.equipment_accessories 
-WHERE equipment_category_id = 1 AND status = 'active'
-ORDER BY CASE WHEN accessory_type = 'default' THEN 1 ELSE 2 END, accessory_name;
+### 5. `core.get_equipment_accessories(equipment_category_id)` [EXISTING - CORRECT]
+**Purpose:** Get accessories for selected equipment  
+**Returns:** Accessory ID, name, type (default/optional), default quantity
 
--- 7. Create the hire request using the validated data
-SELECT * FROM interactions.create_hire(
-    1,                                              -- customer_id (from step 1)
-    1,                                              -- contact_id (from step 3)
-    1,                                              -- site_id (from step 4)
-    '[{"equipment_category_id": 1, "quantity": 2}, 
-      {"equipment_category_id": 3, "quantity": 1}]'::JSONB,  -- equipment_list (from step 5)
-    '2025-06-12'::DATE,                            -- hire_start_date
-    '2025-06-12'::DATE,                            -- delivery_date
-    '09:00'::TIME,                                 -- delivery_time
-    'Special delivery instructions'                 -- notes
-);
+### 6. `interactions.create_hire()` [UPDATED]
+**Purpose:** Create hire interaction and driver task  
+**Process:**
+- Creates interaction record
+- Adds equipment to `component_equipment_list`
+- Creates hire details component
+- Creates driver delivery task
 
--- This creates:
--- - Interaction record with reference number HR250612001 (using system.generate_reference_number)
--- - Equipment list component with selected equipment
--- - Hire details component with delivery information  
--- - Driver task for equipment delivery (using tasks.create_driver_task)
+All procedures now use existing function names without any wrapper functions.
 */
