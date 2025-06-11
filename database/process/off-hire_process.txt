@@ -1,0 +1,222 @@
+# Off-Hire Workflow Procedures Documentation
+
+## Overview
+
+This document details the specific procedures needed to support the off-hire workflow process. The workflow follows a step-by-step user interface where users build up equipment collection requests through multiple searchable selection components.
+
+## Off-Hire Workflow Process
+
+### User Interface Flow
+1. **User Action:** Selects "Off-Hire" option
+2. **UI Response:** Multiple input blocks appear:
+   - Customer Information Block
+   - Sites/Addresses Block  
+   - Date Information Block (Collection focused)
+   - Equipment Block (Currently hired equipment)
+   - Notes Block
+
+### Step-by-Step Data Collection
+
+#### Step 1: Customer Selection
+**User Action:** Selects customer from searchable list box  
+**Required Procedure:** Customer search and lookup  
+**Backend Process:** Python layer calls customer search procedure  
+
+#### Step 2: Contact Selection  
+**User Action:** Selects contact from searchable list box (filtered by selected customer)  
+**Required Procedure:** Contact lookup by customer  
+**Backend Process:** Python layer calls contact search procedure with customer filter  
+
+#### Step 3: Site Selection
+**User Action:** Selects site from searchable list box (filtered by selected customer)  
+**Required Procedure:** Site lookup by customer  
+**Backend Process:** Python layer calls site search procedure with customer filter  
+
+#### Step 4: Equipment Selection
+**User Action:** Selects equipment from searchable list box (all available equipment)  
+**Required Procedure:** Equipment search with accessories  
+**Backend Process:** Python layer calls equipment search, retrieves accessories, applies defaults  
+**Special Handling:** Accessories must be displayed and some auto-enabled  
+**Note:** Currently shows all equipment (will be filtered to hired equipment only after system has historical data)  
+
+#### Step 5: Notes (Optional)
+**User Action:** Adds notes if needed  
+**Backend Process:** Simple text field, no procedure required  
+
+#### Step 6: Submission
+**User Action:** Submits off-hire request  
+**Backend Process:** Python layer aggregates all data and calls create_off_hire procedure  
+**Result:** Creates interaction and driver collection task  
+
+## Required Database Procedures
+
+### 1. Customer Search and Lookup
+
+#### `core.search_customers(search_term, limit, offset)`
+**Purpose:** Provides searchable customer list for selection dropdown  
+**Process:**
+- Searches customer names using full-text search
+- Includes customer codes and status
+- Returns active customers only
+- Supports pagination for large datasets  
+**Inputs:** Search term (string), limit (int), offset (int)  
+**Outputs:** Customer ID, name, code, contact count, site count  
+**Used By:** Customer selection dropdown  
+
+#### `core.get_customer_by_id(customer_id)`
+**Purpose:** Retrieves complete customer details for selected customer  
+**Process:**
+- Returns full customer record
+- Includes credit limit and payment terms
+- Validates customer is active  
+**Inputs:** Customer ID  
+**Outputs:** Complete customer record  
+**Used By:** Customer validation and display  
+
+### 2. Contact Lookup by Customer
+
+#### `core.get_contacts_by_customer(customer_id, search_term, active_only)`
+**Purpose:** Provides searchable contact list filtered by customer  
+**Process:**
+- Searches contacts belonging to specific customer
+- Includes job titles and contact methods
+- Returns active contacts only
+- Highlights primary and billing contacts  
+**Inputs:** Customer ID, optional search term, active flag  
+**Outputs:** Contact ID, name, job title, email, phone, is_primary, is_billing  
+**Used By:** Contact selection dropdown  
+
+### 3. Site Lookup by Customer
+
+#### `core.get_sites_by_customer(customer_id, search_term, active_only)`
+**Purpose:** Provides searchable site list filtered by customer  
+**Process:**
+- Searches sites belonging to specific customer
+- Includes full addresses and site types
+- Returns active sites only
+- Includes delivery instructions  
+**Inputs:** Customer ID, optional search term, active flag  
+**Outputs:** Site ID, name, address, site type, contact info, delivery instructions  
+**Used By:** Site selection dropdown  
+
+### 4. Equipment Search with Accessories
+
+#### `core.search_equipment_for_hire(search_term, category_filter, available_only)`
+**Purpose:** Provides searchable equipment list with availability  
+**Process:**
+- Searches equipment categories and names
+- Checks availability status
+- Includes pricing information
+- Returns active equipment only  
+**Inputs:** Search term, optional category filter, availability flag  
+**Outputs:** Equipment ID, name, code, description, daily_rate, available_quantity  
+**Used By:** Equipment selection dropdown  
+**Note:** Currently shows all equipment - will be modified later to show only hired equipment when historical data is available
+
+#### `core.get_equipment_accessories(equipment_category_id)`
+**Purpose:** Retrieves accessories for selected equipment  
+**Process:**
+- Returns all accessories for equipment category
+- Includes default selection flags
+- Provides pricing for accessories
+- Shows required vs optional accessories  
+**Inputs:** Equipment category ID  
+**Outputs:** Accessory ID, name, description, is_default, is_required, price  
+**Used By:** Accessory selection display  
+
+### 5. Off-Hire Creation
+
+#### `interactions.create_off_hire(customer_data, contact_data, site_data, equipment_list, collection_dates, notes)`
+**Purpose:** Creates off-hire interaction and driver collection task  
+**Process:**
+- Validates all input data
+- Creates interaction record with reference number
+- Creates driver collection task
+- Links equipment to collection task  
+**Inputs:** Aggregated off-hire request data from Python layer  
+**Helper Functions:**
+- `security.authenticate_user()` - Authentication and authorization
+- `system.generate_reference_number()` - Generate unique reference numbers (OH prefix)
+- `tasks.create_driver_task()` - Create standardized driver collection task
+**Outputs:** Interaction ID, reference number, driver task ID  
+**Note:** Currently no validation of hire status - will be added later when historical data is available  
+
+## Date System Differences from Hire
+
+### Off-Hire Date Fields
+- **Hire End Date:** When the hire period officially ends
+- **Collection Date:** When driver should collect the equipment
+- **Collection Time:** Specific time for collection appointment
+
+### Date Validation
+- Collection date must be >= hire end date
+- Cannot schedule collection for equipment not currently on hire
+- Must consider site access hours and driver availability
+
+## Python Layer Integration
+
+### Data Aggregation Process
+The Python layer will:
+1. **Collect UI Data:** Gather selections from all UI blocks
+2. **Validate Relationships:** Ensure contact belongs to customer, site belongs to customer
+3. **Validate Equipment Status:** Ensure selected equipment is actually on hire to customer
+4. **Process Equipment:** Combine equipment selections with currently hired accessories
+5. **Format Request:** Structure data for database procedure call
+6. **Call Procedure:** Execute `interactions.create_off_hire()` with aggregated data
+7. **Handle Response:** Process success/error responses and update UI
+
+### Equipment and Accessories Handling
+```python
+# Example off-hire equipment data structure
+equipment_list = [
+    {
+        "equipment_category_id": 5,
+        "quantity": 1,
+        "original_hire_reference": "HR250609001",
+        "accessories": [
+            {"accessory_id": 101, "quantity": 1, "return_with_equipment": True},
+            {"accessory_id": 102, "quantity": 2, "return_with_equipment": True}
+        ]
+    }
+]
+```
+
+## Key Differences from Hire Process
+
+1. **Equipment Selection:** Currently shows all equipment (same as hire) - will be filtered to hired equipment later when historical data is available
+2. **Date Focus:** Collection dates instead of delivery dates
+3. **Reference Prefix:** Uses "OH" instead of "HR"
+4. **Task Type:** Creates "collection" driver tasks instead of "delivery" tasks
+5. **Future Enhancement:** Will add hire status validation once historical data is built up
+
+## Helper Functions Documentation
+
+### Authentication & Authorization Helpers
+- **`security.authenticate_user()`** - Validates credentials and creates session tokens
+- **`security.set_session_context()`** - Sets employee ID and role for session
+- **`security.validate_session()`** - Validates existing session tokens
+
+### System Utilities
+- **`system.generate_reference_number()`** - Generates unique reference numbers (OH250609001 format)
+- **`system.get_prefix_for_interaction()`** - Gets "OH" prefix for off-hire type
+- **`system.get_next_sequence_for_date()`** - Gets next sequence number for date
+
+### Task Management Helpers
+- **`tasks.create_driver_task()`** - Creates standardized driver collection tasks
+- **`tasks.find_available_driver()`** - Finds best available driver for collection
+
+### Validation Helpers
+- **`core.validate_collection_dates()`** - Ensures collection dates are logical and feasible
+- **Future Enhancement:** `core.validate_equipment_on_hire()` - Will confirm equipment is currently hired by customer (to be added later)
+
+## Reference Number System
+
+### Off-Hire Reference Format
+- **Format:** `OH[YYMMDD][###]`
+- **Example:** `OH250609001` (First off-hire on June 9th, 2025)
+- **Prefix:** OH = Off-Hire/Collection
+- **Daily Reset:** Sequence resets each day starting from 001
+
+## Next Steps
+
+This workflow-focused documentation will be expanded as we implement each procedure and test the complete off-hire process flow.

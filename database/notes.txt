@@ -18,3 +18,12 @@ please check create_off_hire process that it also works properly.
 
 remember there are helpers procedures.
 I want to create simple procedures that offload to the helpers if possible.
+
+
+
+could you please go through database/procedures/interactions/create_hire.sql and validate its process.
+
+later, when the program is done. I want a front end with a drop down, the user selects "new hire"
+the ui then pupulates divs/blocks with customer info, date info, equipment info, site info, ...
+
+there will be a python business logic layer that will take the input data and feed it into the create_hire procedure and create a new interaction and driver task.

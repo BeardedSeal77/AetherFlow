@@ -1,0 +1,178 @@
+# Hire Workflow Procedures Documentation
+
+## Overview
+
+This document details the specific procedures needed to support the hire workflow process. The workflow follows a step-by-step user interface where users build up hire requests through multiple searchable selection components.
+
+## Hire Workflow Process
+
+### User Interface Flow
+1. **User Action:** Selects "Hire" option
+2. **UI Response:** Multiple input blocks appear:
+   - Customer Information Block
+   - Sites/Addresses Block  
+   - Date Information Block
+   - Equipment Block
+   - Notes Block
+
+### Step-by-Step Data Collection
+
+#### Step 1: Customer Selection
+**User Action:** Selects customer from searchable list box  
+**Required Procedure:** Customer search and lookup  
+**Backend Process:** Python layer calls customer search procedure  
+
+#### Step 2: Contact Selection  
+**User Action:** Selects contact from searchable list box (filtered by selected customer)  
+**Required Procedure:** Contact lookup by customer  
+**Backend Process:** Python layer calls contact search procedure with customer filter  
+
+#### Step 3: Site Selection
+**User Action:** Selects site from searchable list box (filtered by selected customer)  
+**Required Procedure:** Site lookup by customer  
+**Backend Process:** Python layer calls site search procedure with customer filter  
+
+#### Step 4: Equipment Selection
+**User Action:** Selects equipment from searchable list box  
+**Required Procedure:** Equipment search with accessories  
+**Backend Process:** Python layer calls equipment search, retrieves accessories, applies defaults  
+**Special Handling:** Accessories must be displayed and some auto-enabled  
+
+#### Step 5: Notes (Optional)
+**User Action:** Adds notes if needed  
+**Backend Process:** Simple text field, no procedure required  
+
+#### Step 6: Submission
+**User Action:** Submits hire request  
+**Backend Process:** Python layer aggregates all data and calls create_hire procedure  
+**Result:** Creates interaction and driver task  
+
+## Required Database Procedures
+
+### 1. Customer Search and Lookup
+
+#### `core.search_customers(search_term, limit, offset)`
+**Purpose:** Provides searchable customer list for selection dropdown  
+**Process:**
+- Searches customer names using full-text search
+- Includes customer codes and status
+- Returns active customers only
+- Supports pagination for large datasets  
+**Inputs:** Search term (string), limit (int), offset (int)  
+**Outputs:** Customer ID, name, code, contact count, site count  
+**Used By:** Customer selection dropdown  
+
+#### `core.get_customer_by_id(customer_id)`
+**Purpose:** Retrieves complete customer details for selected customer  
+**Process:**
+- Returns full customer record
+- Includes credit limit and payment terms
+- Validates customer is active  
+**Inputs:** Customer ID  
+**Outputs:** Complete customer record  
+**Used By:** Customer validation and display  
+
+### 2. Contact Lookup by Customer
+
+#### `core.get_contacts_by_customer(customer_id, search_term, active_only)`
+**Purpose:** Provides searchable contact list filtered by customer  
+**Process:**
+- Searches contacts belonging to specific customer
+- Includes job titles and contact methods
+- Returns active contacts only
+- Highlights primary and billing contacts  
+**Inputs:** Customer ID, optional search term, active flag  
+**Outputs:** Contact ID, name, job title, email, phone, is_primary, is_billing  
+**Used By:** Contact selection dropdown  
+
+### 3. Site Lookup by Customer
+
+#### `core.get_sites_by_customer(customer_id, search_term, active_only)`
+**Purpose:** Provides searchable site list filtered by customer  
+**Process:**
+- Searches sites belonging to specific customer
+- Includes full addresses and site types
+- Returns active sites only
+- Includes delivery instructions  
+**Inputs:** Customer ID, optional search term, active flag  
+**Outputs:** Site ID, name, address, site type, contact info, delivery instructions  
+**Used By:** Site selection dropdown  
+
+### 4. Equipment Search with Accessories
+
+#### `core.search_equipment_for_hire(search_term, category_filter, available_only)`
+**Purpose:** Provides searchable equipment list with availability  
+**Process:**
+- Searches equipment categories and names
+- Checks availability status
+- Includes pricing information
+- Returns active equipment only  
+**Inputs:** Search term, optional category filter, availability flag  
+**Outputs:** Equipment ID, name, code, description, daily_rate, available_quantity  
+**Used By:** Equipment selection dropdown  
+
+#### `core.get_equipment_accessories(equipment_category_id)`
+**Purpose:** Retrieves accessories for selected equipment  
+**Process:**
+- Returns all accessories for equipment category
+- Includes default selection flags
+- Provides pricing for accessories
+- Shows required vs optional accessories  
+**Inputs:** Equipment category ID  
+**Outputs:** Accessory ID, name, description, is_default, is_required, price  
+**Used By:** Accessory selection display  
+
+### 5. Hire Creation
+
+#### `interactions.create_hire(customer_data, contact_data, site_data, equipment_list, hire_dates, notes)`
+**Purpose:** Creates hire interaction and driver task (simplified version)  
+**Process:**
+- Validates all input data
+- Creates interaction record with reference number
+- Creates driver delivery task
+- Links equipment to task
+- Applies accessories to equipment items  
+**Inputs:** Aggregated hire request data from Python layer  
+**Helper Functions:**
+- `security.authenticate_user()` - Authentication and authorization
+- `system.generate_reference_number()` - Generate unique reference numbers  
+- `tasks.create_driver_task()` - Create standardized driver delivery task
+**Outputs:** Interaction ID, reference number, driver task ID  
+
+## Python Layer Integration
+
+### Data Aggregation Process
+The Python layer will:
+1. **Collect UI Data:** Gather selections from all UI blocks
+2. **Validate Relationships:** Ensure contact belongs to customer, site belongs to customer
+3. **Process Equipment:** Combine equipment selections with accessories
+4. **Format Request:** Structure data for database procedure call
+5. **Call Procedure:** Execute `interactions.create_hire()` with aggregated data
+6. **Handle Response:** Process success/error responses and update UI
+
+### Equipment and Accessories Handling
+```python
+# Example equipment data structure
+equipment_list = [
+    {
+        "equipment_category_id": 5,
+        "quantity": 1,
+        "accessories": [
+            {"accessory_id": 101, "quantity": 1, "is_default": True},
+            {"accessory_id": 102, "quantity": 2, "is_default": False}
+        ]
+    }
+]
+```
+
+## Helper Functions Documentation
+
+[Same detailed helper functions documentation as previous document would go here - authentication, system utilities, task management, etc.]
+
+## Reference Number System
+
+[Same reference number system documentation as previous document would go here]
+
+## Next Steps
+
+This workflow-focused documentation will be expanded as we implement each procedure and test the complete hire process flow.

@@ -4,7 +4,7 @@
 -- Purpose: Process equipment hire requests from customers
 -- Creates hire interaction with equipment list and delivery details
 -- Creates driver task for equipment delivery
--- Uses helper functions for cost calculation and validation
+-- Uses helper functions for authentication, validation, and driver assignment
 -- =============================================================================
 
 SET search_path TO core, interactions, tasks, security, system, public;
@@ -24,8 +24,6 @@ CREATE OR REPLACE FUNCTION interactions.create_hire(
     
     -- Optional delivery details
     p_delivery_time TIME DEFAULT '09:00'::TIME,
-    p_end_date DATE DEFAULT NULL,
-    p_end_time TIME DEFAULT NULL,
     p_delivery_method VARCHAR(50) DEFAULT 'deliver',
     p_special_instructions TEXT DEFAULT NULL,
     p_contact_method VARCHAR(50) DEFAULT 'phone',
@@ -46,8 +44,7 @@ RETURNS TABLE(
     delivery_date DATE,
     estimated_delivery_time TIME,
     equipment_count INTEGER,
-    total_quantity INTEGER,
-    estimated_total_cost DECIMAL(15,2)
+    total_quantity INTEGER
 ) AS $HIRE$
 DECLARE
     v_interaction_id INTEGER;
@@ -69,11 +66,8 @@ DECLARE
     v_equipment_item JSONB;
     v_equipment_count INTEGER := 0;
     v_total_quantity INTEGER := 0;
-    v_estimated_cost DECIMAL(15,2) := 0.00;
-    
-    -- Task scheduling variables
     v_task_priority VARCHAR(20);
-    v_estimated_duration INTEGER := 90; -- 1.5 hours default for delivery
+    v_estimated_duration INTEGER := 90; -- Default 90 minutes for delivery
     v_scheduled_date DATE;
     v_scheduled_time TIME;
 BEGIN
@@ -91,7 +85,7 @@ BEGIN
         IF v_employee_id IS NULL THEN
             RETURN QUERY SELECT false, 'Invalid or expired session'::TEXT, 
                 NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-                NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER, NULL::DECIMAL;
+                NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
             RETURN;
         END IF;
     ELSE
@@ -100,85 +94,121 @@ BEGIN
     END IF;
     
     IF v_employee_id IS NULL THEN
-        RETURN QUERY SELECT false, 'Employee authentication required'::TEXT, 
+        RETURN QUERY SELECT false, 'Employee authentication required'::TEXT,
             NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER, NULL::DECIMAL;
+            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
         RETURN;
     END IF;
     
-    -- Get employee details for logging
-    SELECT e.name || ' ' || e.surname INTO v_employee_name
-    FROM core.employees e WHERE e.id = v_employee_id;
+    -- Verify employee exists and is active
+    SELECT e.name || ' ' || e.surname, e.role
+    INTO v_employee_name, v_task_priority
+    FROM core.employees e
+    WHERE e.id = v_employee_id AND e.status = 'active';
+    
+    IF v_employee_name IS NULL THEN
+        RETURN QUERY SELECT false, 'Employee not found or inactive'::TEXT,
+            NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
+            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
+        RETURN;
+    END IF;
     
     -- =============================================================================
-    -- VALIDATION
+    -- INPUT VALIDATION
     -- =============================================================================
     
     -- Validate customer exists
-    SELECT c.company_name INTO v_customer_name
-    FROM core.customers c WHERE c.id = p_customer_id;
+    SELECT customer_name INTO v_customer_name
+    FROM core.customers 
+    WHERE id = p_customer_id AND status = 'active';
     
     IF v_customer_name IS NULL THEN
-        v_validation_errors := v_validation_errors || 'Invalid customer ID';
+        v_validation_errors := array_append(v_validation_errors, 'Customer not found or inactive');
     END IF;
     
     -- Validate contact exists and belongs to customer
-    SELECT ct.name || ' ' || ct.surname INTO v_contact_name
-    FROM core.contacts ct 
-    WHERE ct.id = p_contact_id AND ct.customer_id = p_customer_id;
+    SELECT first_name || ' ' || last_name INTO v_contact_name
+    FROM core.contacts 
+    WHERE id = p_contact_id AND customer_id = p_customer_id AND status = 'active';
     
     IF v_contact_name IS NULL THEN
-        v_validation_errors := v_validation_errors || 'Invalid contact ID or contact does not belong to customer';
+        v_validation_errors := array_append(v_validation_errors, 'Contact not found or does not belong to customer');
     END IF;
     
     -- Validate site exists and belongs to customer
-    SELECT s.site_name, s.address INTO v_site_name, v_site_address
-    FROM core.sites s 
-    WHERE s.id = p_site_id AND s.customer_id = p_customer_id;
+    SELECT site_name, site_address INTO v_site_name, v_site_address
+    FROM core.sites 
+    WHERE id = p_site_id AND customer_id = p_customer_id AND status = 'active';
     
     IF v_site_name IS NULL THEN
-        v_validation_errors := v_validation_errors || 'Invalid site ID or site does not belong to customer';
+        v_validation_errors := array_append(v_validation_errors, 'Site not found or does not belong to customer');
     END IF;
     
-    -- Validate equipment list is not empty
-    IF jsonb_array_length(p_equipment_list) = 0 THEN
-        v_validation_errors := v_validation_errors || 'Equipment list cannot be empty';
+    -- Validate equipment list
+    IF p_equipment_list IS NULL OR jsonb_array_length(p_equipment_list) = 0 THEN
+        v_validation_errors := array_append(v_validation_errors, 'Equipment list is required');
+    ELSE
+        -- Validate each equipment item
+        FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
+        LOOP
+            -- Check required fields
+            IF (v_equipment_item->>'equipment_category_id') IS NULL THEN
+                v_validation_errors := array_append(v_validation_errors, 'Equipment category ID is required for all items');
+            END IF;
+            
+            IF (v_equipment_item->>'quantity') IS NULL OR (v_equipment_item->>'quantity')::INTEGER <= 0 THEN
+                v_validation_errors := array_append(v_validation_errors, 'Valid quantity is required for all equipment items');
+            END IF;
+            
+            IF (v_equipment_item->>'hire_duration') IS NULL OR (v_equipment_item->>'hire_duration')::INTEGER <= 0 THEN
+                v_validation_errors := array_append(v_validation_errors, 'Valid hire duration is required for all equipment items');
+            END IF;
+            
+            IF (v_equipment_item->>'hire_period_type') NOT IN ('days', 'weeks', 'months') THEN
+                v_validation_errors := array_append(v_validation_errors, 'Hire period type must be days, weeks, or months');
+            END IF;
+            
+            -- Verify equipment category exists
+            IF NOT EXISTS (SELECT 1 FROM core.equipment_categories WHERE id = (v_equipment_item->>'equipment_category_id')::INTEGER) THEN
+                v_validation_errors := array_append(v_validation_errors, 'Invalid equipment category: ' || (v_equipment_item->>'equipment_category_id'));
+            END IF;
+            
+            -- Count equipment items and quantities
+            v_equipment_count := v_equipment_count + 1;
+            v_total_quantity := v_total_quantity + (v_equipment_item->>'quantity')::INTEGER;
+        END LOOP;
     END IF;
     
-    -- Validate delivery date is not in the past
-    IF p_delivery_date < CURRENT_DATE THEN
-        v_validation_errors := v_validation_errors || 'Delivery date cannot be in the past';
+    -- Validate delivery date
+    IF p_delivery_date IS NULL THEN
+        v_validation_errors := array_append(v_validation_errors, 'Delivery date is required');
+    ELSIF p_delivery_date < CURRENT_DATE THEN
+        v_validation_errors := array_append(v_validation_errors, 'Delivery date cannot be in the past');
+    END IF;
+    
+    -- Validate priority
+    IF p_priority NOT IN ('low', 'medium', 'high', 'urgent') THEN
+        v_validation_errors := array_append(v_validation_errors, 'Priority must be low, medium, high, or urgent');
+    END IF;
+    
+    -- Validate delivery method
+    IF p_delivery_method NOT IN ('deliver', 'counter_collection') THEN
+        v_validation_errors := array_append(v_validation_errors, 'Delivery method must be deliver or counter_collection');
     END IF;
     
     -- Return validation errors if any
     IF array_length(v_validation_errors, 1) > 0 THEN
-        RETURN QUERY SELECT false, 
-            ('Validation errors: ' || array_to_string(v_validation_errors, '; '))::TEXT,
+        RETURN QUERY SELECT false, 'Validation failed: ' || array_to_string(v_validation_errors, '; ')::TEXT,
             NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER, NULL::DECIMAL;
+            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
         RETURN;
     END IF;
     
     -- =============================================================================
-    -- CALCULATE HIRE COSTS USING HELPER FUNCTION
+    -- TASK PRIORITY AND SCHEDULING LOGIC
     -- =============================================================================
     
-    -- Use helper function to calculate total costs
-    SELECT total_rental_cost INTO v_estimated_cost
-    FROM interactions.get_hire_totals(p_customer_id, p_equipment_list);
-    
-    -- Count equipment items and total quantity
-    FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
-    LOOP
-        v_equipment_count := v_equipment_count + 1;
-        v_total_quantity := v_total_quantity + (v_equipment_item->>'quantity')::INTEGER;
-    END LOOP;
-    
-    -- =============================================================================
-    -- TASK PRIORITY AND SCHEDULING
-    -- =============================================================================
-    
-    -- Set task priority based on hire priority and delivery timing
+    -- Determine task priority based on delivery date and user priority
     v_task_priority := CASE 
         WHEN p_priority = 'urgent' OR p_delivery_date = CURRENT_DATE THEN 'urgent'
         WHEN p_priority = 'high' OR p_delivery_date = CURRENT_DATE + 1 THEN 'high'
@@ -216,7 +246,7 @@ BEGIN
     IF v_driver_employee_id IS NULL THEN
         RETURN QUERY SELECT false, 'No drivers available for delivery assignment'::TEXT, 
             NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER, NULL::DECIMAL;
+            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
         RETURN;
     END IF;
     
@@ -226,6 +256,22 @@ BEGIN
     
     -- Generate reference number using system function
     v_reference_number := system.generate_reference_number('hire');
+    
+    -- =============================================================================
+    -- BUILD EQUIPMENT SUMMARY FOR DISPLAY
+    -- =============================================================================
+    
+    v_equipment_summary := '';
+    FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
+    LOOP
+        SELECT category_name INTO v_equipment_summary
+        FROM core.equipment_categories 
+        WHERE id = (v_equipment_item->>'equipment_category_id')::INTEGER;
+        
+        v_equipment_summary := v_equipment_summary || 
+            CASE WHEN v_equipment_summary != '' THEN ', ' ELSE '' END ||
+            v_equipment_summary || ' x' || (v_equipment_item->>'quantity');
+    END LOOP;
     
     -- =============================================================================
     -- CREATE INTERACTION RECORD (Layer 1)
@@ -260,9 +306,6 @@ BEGIN
     -- CREATE EQUIPMENT LIST COMPONENT (Layer 2)
     -- =============================================================================
     
-    -- Build equipment summary for display
-    v_equipment_summary := '';
-    
     -- Insert each equipment item
     FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
     LOOP
@@ -270,27 +313,19 @@ BEGIN
             interaction_id,
             equipment_category_id,
             quantity,
+            hire_duration,
+            hire_period_type,
             special_requirements,
             created_at
         ) VALUES (
             v_interaction_id,
             (v_equipment_item->>'equipment_category_id')::INTEGER,
             (v_equipment_item->>'quantity')::INTEGER,
-            'HIRE: ' || (v_equipment_item->>'hire_duration') || ' ' || (v_equipment_item->>'hire_period_type') ||
-            CASE WHEN v_equipment_item->>'special_requirements' IS NOT NULL 
-                 THEN ' - ' || (v_equipment_item->>'special_requirements') 
-                 ELSE '' END,
+            (v_equipment_item->>'hire_duration')::INTEGER,
+            (v_equipment_item->>'hire_period_type')::VARCHAR,
+            v_equipment_item->>'special_requirements',
             CURRENT_TIMESTAMP
         );
-        
-        -- Build equipment summary
-        SELECT category_name INTO v_equipment_summary
-        FROM core.equipment_categories 
-        WHERE id = (v_equipment_item->>'equipment_category_id')::INTEGER;
-        
-        v_equipment_summary := v_equipment_summary || 
-            CASE WHEN v_equipment_summary != '' THEN ', ' ELSE '' END ||
-            v_equipment_summary || ' x' || (v_equipment_item->>'quantity');
     END LOOP;
     
     -- =============================================================================
@@ -300,32 +335,25 @@ BEGIN
     INSERT INTO interactions.component_hire_details (
         interaction_id,
         site_id,
-        delivery_date,
-        delivery_time,
-        end_date,
-        end_time,
+        deliver_date,
+        deliver_time,
         delivery_method,
         special_instructions,
-        estimated_total_cost,
         created_at
     ) VALUES (
         v_interaction_id,
         p_site_id,
         p_delivery_date,
         p_delivery_time,
-        p_end_date,
-        p_end_time,
         p_delivery_method,
         p_special_instructions,
-        v_estimated_cost,
         CURRENT_TIMESTAMP
     ) RETURNING id INTO v_hire_component_id;
     
     -- =============================================================================
-    -- CREATE DRIVER TASK FOR DELIVERY (Layer 3) - Use Helper Function
+    -- CREATE DRIVER TASK USING HELPER FUNCTION (Layer 3)
     -- =============================================================================
     
-    -- Use the driver task helper function
     SELECT task_id INTO v_driver_task_id
     FROM tasks.create_driver_task(
         v_interaction_id,
@@ -366,56 +394,24 @@ BEGIN
             (v_equipment_item->>'quantity')::INTEGER,
             'delivery',
             'FOR DELIVERY: Duration ' || (v_equipment_item->>'hire_duration') || ' ' || 
-            (v_equipment_item->>'hire_period_type') || '. ' ||
-            COALESCE(v_equipment_item->>'special_requirements', 'Check equipment condition before delivery'),
+            (v_equipment_item->>'hire_period_type') || 
+            CASE WHEN v_equipment_item->>'special_requirements' IS NOT NULL 
+                 THEN '. Special: ' || (v_equipment_item->>'special_requirements') 
+                 ELSE '' END,
             CURRENT_TIMESTAMP
         );
     END LOOP;
     
     -- =============================================================================
-    -- AUDIT LOGGING
-    -- =============================================================================
-    
-    -- Log hire creation
-    INSERT INTO security.audit_log (
-        employee_id,
-        action,
-        table_name,
-        record_id,
-        new_values,
-        ip_address,
-        created_at
-    ) VALUES (
-        v_employee_id,
-        'create_hire',
-        'interactions',
-        v_interaction_id,
-        jsonb_build_object(
-            'reference_number', v_reference_number,
-            'customer_name', v_customer_name,
-            'site_name', v_site_name,
-            'delivery_date', p_delivery_date,
-            'equipment_count', v_equipment_count,
-            'total_quantity', v_total_quantity,
-            'estimated_cost', v_estimated_cost,
-            'assigned_driver', v_driver_employee_name,
-            'created_by_name', v_employee_name
-        ),
-        inet_client_addr(),
-        CURRENT_TIMESTAMP
-    );
-    
-    -- =============================================================================
-    -- RETURN SUCCESS
+    -- RETURN SUCCESS RESPONSE
     -- =============================================================================
     
     RETURN QUERY SELECT 
         true,
-        ('Hire ' || v_reference_number || ' created for ' || v_customer_name || '. ' ||
-         'Delivery scheduled for ' || p_delivery_date || ' at ' || p_delivery_time || '. ' ||
-         CASE WHEN p_priority IN ('urgent', 'high') 
-              THEN 'Driver ' || v_driver_employee_name || ' assigned for priority delivery.'
-              ELSE 'Delivery task created for assignment.'
+        ('Hire request processed successfully. Driver task created for ' || 
+         CASE WHEN v_driver_employee_name IS NOT NULL 
+              THEN v_driver_employee_name 
+              ELSE 'assignment.' 
          END)::TEXT,
         v_interaction_id,
         v_reference_number,
@@ -425,33 +421,29 @@ BEGIN
         v_scheduled_date,
         v_scheduled_time,
         v_equipment_count,
-        v_total_quantity,
-        v_estimated_cost;
+        v_total_quantity;
         
 EXCEPTION 
     WHEN unique_violation THEN
-        -- Handle any unique constraint violations
         RETURN QUERY SELECT 
             false, 
-            'Duplicate hire request detected.'::TEXT,
+            'Duplicate hire request detected. Reference number already exists.'::TEXT,
             NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER, NULL::DECIMAL;
+            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
             
     WHEN foreign_key_violation THEN
-        -- Handle foreign key violations
         RETURN QUERY SELECT 
             false, 
             'Invalid reference data. Please verify customer, contact, site, and equipment selections.'::TEXT,
             NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER, NULL::DECIMAL;
+            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
             
     WHEN OTHERS THEN
-        -- Handle any other errors
         RETURN QUERY SELECT 
             false, 
             ('System error occurred: ' || SQLERRM)::TEXT,
             NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER, NULL::DECIMAL;
+            NULL::DATE, NULL::TIME, NULL::INTEGER, NULL::INTEGER;
 END;
 $HIRE$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -460,17 +452,14 @@ $HIRE$ LANGUAGE plpgsql SECURITY DEFINER;
 -- =============================================================================
 
 -- Grant execute permissions to appropriate roles
--- These would be set in the permissions script, but documented here:
--- GRANT EXECUTE ON FUNCTION interactions.create_hire TO hire_control;
--- GRANT EXECUTE ON FUNCTION interactions.create_hire TO manager;
--- GRANT EXECUTE ON FUNCTION interactions.create_hire TO owner;
+GRANT EXECUTE ON FUNCTION interactions.create_hire TO PUBLIC;
 
 COMMENT ON FUNCTION interactions.create_hire IS 
 'Process equipment hire/delivery requests from customers.
 Creates hire interaction with equipment list and delivery details.
 Automatically creates driver delivery task with appropriate priority.
-Uses helper functions for cost calculation and driver assignment.
-Designed to work with off-hire procedure for complete hire/off-hire workflow.';
+Uses helper functions for authentication, validation, and driver assignment.
+Designed for task management workflow without cost calculations.';
 
 -- =============================================================================
 -- USAGE EXAMPLES
@@ -501,8 +490,6 @@ SELECT * FROM interactions.create_hire(
     '2025-06-10',                          -- p_delivery_date
     'medium',                              -- p_priority
     '09:00'::TIME,                         -- p_delivery_time
-    '2025-06-17',                          -- p_end_date
-    '16:00'::TIME,                         -- p_end_time
     'deliver',                             -- p_delivery_method
     'Equipment needed at main gate. Ask for site foreman John Guy.',
     'phone',                               -- p_contact_method
@@ -527,38 +514,33 @@ SELECT * FROM interactions.create_hire(
     CURRENT_DATE,                          -- p_delivery_date (today - urgent)
     'urgent',                              -- p_priority (same-day delivery)
     '14:00'::TIME,                         -- p_delivery_time
-    CURRENT_DATE + 3,                      -- p_end_date
-    '16:00'::TIME,                         -- p_end_time
     'deliver',                             -- p_delivery_method
     'URGENT DELIVERY: Customer site ready and waiting. Priority delivery required.',
     'phone',                               -- p_contact_method
-    'URGENT HIRE: Customer needs equipment delivered today for critical project',
+    'URGENT: Customer needs equipment today',
     1001                                   -- p_employee_id
 );
 
--- Example 3: Counter collection (customer picks up)
+-- Example 3: Counter collection
 SELECT * FROM interactions.create_hire(
-    1003,                                   -- p_customer_id
+    1002,                                   -- p_customer_id
     1003,                                   -- p_contact_id
-    1003,                                   -- p_site_id (their office/depot)
+    1003,                                   -- p_site_id
     '[
         {
-            "equipment_category_id": 7,
-            "quantity": 2,
-            "hire_duration": 1,
-            "hire_period_type": "weeks",
-            "special_requirements": "Customer transport arranged"
+            "equipment_category_id": 2,
+            "quantity": 1,
+            "hire_duration": 5,
+            "hire_period_type": "days"
         }
     ]'::jsonb,                             -- p_equipment_list
     '2025-06-12',                          -- p_delivery_date
-    'medium',                              -- p_priority
+    'low',                                 -- p_priority
     '10:00'::TIME,                         -- p_delivery_time
-    '2025-06-19',                          -- p_end_date
-    '10:00'::TIME,                         -- p_end_time
-    'counter_collection',                  -- p_delivery_method (customer collects)
-    'Customer will collect equipment from depot. Prepare for 10 AM pickup.',
+    'counter_collection',                  -- p_delivery_method
+    'Customer will collect from depot',
     'email',                               -- p_contact_method
     'Customer prefers to collect equipment themselves',
-    1002                                   -- p_employee_id
+    1001                                   -- p_employee_id
 );
 */

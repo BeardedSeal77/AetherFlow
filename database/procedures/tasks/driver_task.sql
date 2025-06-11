@@ -1,3 +1,0 @@
--- takes a task from an already created interaction, and adds it to the drivers taskboard.
--- drivers taskboard only shows todays driver tasks
--- Delivery, Collection, Swap, Repair, Coring, Task (misc)
