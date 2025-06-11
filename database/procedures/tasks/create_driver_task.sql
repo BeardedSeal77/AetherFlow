@@ -32,7 +32,13 @@ DECLARE
     v_assigned_driver_name TEXT;
     v_task_title TEXT;
     v_task_description TEXT;
+    v_priority_adjustment INTEGER := 0;
 BEGIN
+    -- Validate interaction exists
+    IF NOT EXISTS (SELECT 1 FROM interactions.interactions WHERE id = p_interaction_id) THEN
+        RAISE EXCEPTION 'Interaction ID % does not exist', p_interaction_id;
+    END IF;
+    
     -- Build standardized task title and description
     v_task_title := UPPER(p_task_type) || ': ' || p_customer_name || 
                    ' - ' || COALESCE(p_equipment_summary, 'Equipment task');
@@ -42,104 +48,81 @@ BEGIN
                          'Contact: ' || COALESCE(p_contact_name, 'N/A') || E'\n' ||
                          'Phone: ' || COALESCE(p_contact_phone, 'N/A') || E'\n' ||
                          'Address: ' || COALESCE(p_site_address, 'N/A') || E'\n' ||
-                         'Equipment: ' || COALESCE(p_equipment_summary, 'See task details') || E'\n' ||
-                         'Scheduled: ' || p_scheduled_date || ' at ' || p_scheduled_time || E'\n\n' ||
-                         CASE p_task_type
-                           WHEN 'delivery' THEN 
-                             '- Load equipment at depot' || E'\n' ||
-                             '- Check equipment condition and safety' || E'\n' ||
-                             '- Deliver to customer site on time' || E'\n' ||
-                             '- Set up equipment as required' || E'\n' ||
-                             '- Get customer signature on delivery note' || E'\n' ||
-                             '- Update delivery status and notify office'
-                           WHEN 'collection' THEN
-                             '- Contact customer before collection' || E'\n' ||
-                             '- Document any damage or issues' || E'\n' ||
-                             '- Load equipment safely for transport' || E'\n' ||
-                             '- Get customer signature on collection note' || E'\n' ||
-                             '- Transport equipment back to depot' || E'\n' ||
-                             '- Update collection status and notify office'
-                           WHEN 'repair' THEN
-                             '- Bring necessary tools and parts' || E'\n' ||
-                             '- Diagnose equipment issue onsite' || E'\n' ||
-                             '- Complete repair or arrange replacement' || E'\n' ||
-                             '- Test equipment functionality' || E'\n' ||
-                             '- Document work completed and parts used' || E'\n' ||
-                             '- Get customer approval and signature'
-                           WHEN 'swap' THEN
-                             '- Bring replacement equipment' || E'\n' ||
-                             '- Remove faulty equipment from site' || E'\n' ||
-                             '- Install and test replacement equipment' || E'\n' ||
-                             '- Ensure customer is satisfied with swap' || E'\n' ||
-                             '- Transport faulty equipment to depot' || E'\n' ||
-                             '- Update task status and notify office'
-                           WHEN 'coring' THEN
-                             '- Bring coring equipment and safety gear' || E'\n' ||
-                             '- Set up coring equipment safely' || E'\n' ||
-                             '- Complete coring work as specified' || E'\n' ||
-                             '- Clean up work area thoroughly' || E'\n' ||
-                             '- Document work completed and samples' || E'\n' ||
-                             '- Get customer sign-off on completed work'
-                           ELSE
-                             '- Complete task as specified' || E'\n' ||
-                             '- Follow all safety procedures' || E'\n' ||
-                             '- Document work completed' || E'\n' ||
-                             '- Update task status when finished'
-                         END || E'\n\n' ||
-                         'Special Instructions: ' || COALESCE(p_special_instructions, 'Standard procedure');
+                         'Equipment: ' || COALESCE(p_equipment_summary, 'See interaction for details') || E'\n';
     
-    -- Determine task status based on assignment
-    IF p_assigned_to IS NOT NULL THEN
-        v_task_status := 'assigned';
-        SELECT name || ' ' || surname INTO v_assigned_driver_name
-        FROM core.employees WHERE id = p_assigned_to;
-    ELSE
-        v_task_status := 'backlog';
-        v_assigned_driver_name := NULL;
+    IF p_special_instructions IS NOT NULL THEN
+        v_task_description := v_task_description || E'\nSpecial Instructions: ' || p_special_instructions;
     END IF;
     
-    -- Create the driver task
+    -- Set task status based on driver assignment
+    IF p_assigned_to IS NOT NULL THEN
+        v_task_status := 'assigned';
+        
+        -- Get driver name
+        SELECT name || ' ' || surname INTO v_assigned_driver_name
+        FROM core.employees
+        WHERE id = p_assigned_to AND role = 'driver' AND status = 'active';
+        
+        IF v_assigned_driver_name IS NULL THEN
+            RAISE EXCEPTION 'Driver ID % not found or not active', p_assigned_to;
+        END IF;
+    ELSE
+        v_task_status := 'backlog';
+        v_assigned_driver_name := 'Unassigned';
+    END IF;
+    
+    -- Insert the driver task
     INSERT INTO tasks.drivers_taskboard (
         interaction_id,
+        created_by,
+        assigned_to,
         task_type,
-        status,
         priority,
+        status,
+        scheduled_date,
+        scheduled_time,
+        estimated_duration,
         customer_name,
         contact_name,
         contact_phone,
         site_address,
         equipment_summary,
-        scheduled_date,
-        scheduled_time,
-        estimated_duration,
         special_instructions,
-        assigned_to,
-        created_by,
+        task_title,
+        task_description,
         created_at,
         updated_at
     ) VALUES (
         p_interaction_id,
+        p_created_by,
+        p_assigned_to,
         p_task_type,
-        v_task_status,
         p_priority,
+        v_task_status,
+        p_scheduled_date,
+        p_scheduled_time,
+        p_estimated_duration,
         p_customer_name,
         p_contact_name,
         p_contact_phone,
         p_site_address,
         p_equipment_summary,
-        p_scheduled_date,
-        p_scheduled_time,
-        p_estimated_duration,
         p_special_instructions,
-        p_assigned_to,
-        p_created_by,
+        v_task_title,
+        v_task_description,
         CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP
     ) RETURNING id INTO v_task_id;
     
-    RETURN QUERY SELECT 
-        v_task_id,
-        v_assigned_driver_name,
-        v_task_status;
+    -- Return task details
+    RETURN QUERY SELECT v_task_id, v_assigned_driver_name, v_task_status;
+    
 END;
 $CREATE_TASK$ LANGUAGE plpgsql SECURITY DEFINER;
+
+COMMENT ON FUNCTION tasks.create_driver_task IS 
+'Creates standardized driver tasks with proper formatting.
+Validates interaction exists, builds task title/description, handles driver assignment.
+Used by all interaction procedures creating driver tasks.';
+
+GRANT EXECUTE ON FUNCTION tasks.create_driver_task TO PUBLIC;
