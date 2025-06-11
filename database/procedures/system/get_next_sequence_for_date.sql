@@ -1,26 +1,27 @@
 SET search_path TO system, public;
 
-CREATE OR REPLACE FUNCTION system.get_next_sequence_for_date(
-    p_prefix VARCHAR(10),
-    p_date_part VARCHAR(6)
-)
-RETURNS INTEGER AS $GET_SEQUENCE$
+-- Function to get next sequence number for date
+CREATE OR REPLACE FUNCTION system.get_next_sequence_for_date(prefix_param VARCHAR(10), date_part_param VARCHAR(10))
+RETURNS INTEGER AS $$
 DECLARE
-    v_sequence INTEGER;
+    next_sequence INTEGER;
 BEGIN
-    -- Use UPSERT to increment sequence counter for prefix+date combination
-    INSERT INTO system.reference_sequences (prefix, date_part, sequence_number, last_updated)
-    VALUES (p_prefix, p_date_part, 1, CURRENT_TIMESTAMP)
+    -- Insert or update sequence record
+    INSERT INTO system.reference_sequences (prefix, date_part, last_sequence)
+    VALUES (prefix_param, date_part_param, 1)
     ON CONFLICT (prefix, date_part)
     DO UPDATE SET 
-        sequence_number = system.reference_sequences.sequence_number + 1,
-        last_updated = CURRENT_TIMESTAMP
-    RETURNING sequence_number INTO v_sequence;
+        last_sequence = system.reference_sequences.last_sequence + 1,
+        updated_at = CURRENT_TIMESTAMP;
     
-    RETURN v_sequence;
+    -- Get the current sequence
+    SELECT last_sequence INTO next_sequence
+    FROM system.reference_sequences
+    WHERE prefix = prefix_param AND date_part = date_part_param;
     
+    RETURN next_sequence;
 END;
-$GET_SEQUENCE$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION system.get_next_sequence_for_date IS 
 'Gets next sequence number for specific date with concurrent access handling.';

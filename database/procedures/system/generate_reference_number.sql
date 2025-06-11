@@ -1,31 +1,29 @@
 SET search_path TO system, public;
 
-CREATE OR REPLACE FUNCTION system.generate_reference_number(
-    p_interaction_type VARCHAR(50)
-)
-RETURNS VARCHAR(20) AS $GENERATE_REF$
+-- Function to generate complete reference number
+CREATE OR REPLACE FUNCTION system.generate_reference_number(interaction_type_param VARCHAR(50))
+RETURNS VARCHAR(20) AS $$
 DECLARE
-    v_prefix VARCHAR(10);
-    v_date_part VARCHAR(6);
-    v_sequence INTEGER;
-    v_reference_number VARCHAR(20);
+    prefix_val VARCHAR(10);
+    date_part VARCHAR(10);
+    sequence_num INTEGER;
+    reference_number VARCHAR(20);
 BEGIN
-    -- Get prefix for interaction type
-    v_prefix := system.get_prefix_for_interaction(p_interaction_type);
+    -- Get prefix
+    prefix_val := system.get_prefix_for_interaction(interaction_type_param);
     
-    -- Format current date as YYMMDD
-    v_date_part := TO_CHAR(CURRENT_DATE, 'YYMMDD');
+    -- Get date part (YYMMDD)
+    date_part := to_char(CURRENT_DATE, 'YYMMDD');
     
-    -- Get next sequence number for this date
-    v_sequence := system.get_next_sequence_for_date(v_prefix, v_date_part);
+    -- Get next sequence
+    sequence_num := system.get_next_sequence_for_date(prefix_val, date_part);
     
-    -- Combine into final reference number
-    v_reference_number := v_prefix || v_date_part || LPAD(v_sequence::TEXT, 3, '0');
+    -- Format reference number: PPYYMMDDNNN
+    reference_number := prefix_val || date_part || lpad(sequence_num::text, 3, '0');
     
-    RETURN v_reference_number;
-    
+    RETURN reference_number;
 END;
-$GENERATE_REF$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION system.generate_reference_number IS 
 'Generates unique reference numbers in format PREFIX+YYMMDD+SEQUENCE.

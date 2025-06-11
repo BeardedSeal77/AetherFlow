@@ -17,6 +17,7 @@ DROP FUNCTION IF EXISTS interactions.process_statement_request;
 -- FUNCTION IMPLEMENTATION
 -- =============================================================================
 
+-- syntax error at $, use $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION interactions.process_statement_request(
     p_customer_id INTEGER,
     p_contact_id INTEGER,

@@ -1,3 +1,6 @@
+
+SET search_path TO security, public;
+
 -- Function to authenticate user and set session context
 CREATE OR REPLACE FUNCTION security.authenticate_user(
     username_param VARCHAR(50),

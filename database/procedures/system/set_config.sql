@@ -1,3 +1,5 @@
+SET search_path TO system, public;
+
 -- Function to set system configuration
 CREATE OR REPLACE FUNCTION system.set_config(key_name VARCHAR(100), value_param TEXT, type_param VARCHAR(20) DEFAULT 'string')
 RETURNS BOOLEAN AS $$

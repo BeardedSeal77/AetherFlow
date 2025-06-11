@@ -1,3 +1,5 @@
+SET search_path TO system, public;
+
 -- Function to get system configuration
 CREATE OR REPLACE FUNCTION system.get_config(key_name VARCHAR(100))
 RETURNS TEXT AS $$

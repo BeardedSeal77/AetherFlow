@@ -1,6 +1,8 @@
 -- =============================================================================
 -- 3. ASSIGN DRIVER TO TASK
 -- =============================================================================
+SET search_path TO core, interactions, tasks, security, system, public;
+
 
 -- Helper function to assign a driver to an existing task
 DROP FUNCTION IF EXISTS tasks.assign_driver_to_task;

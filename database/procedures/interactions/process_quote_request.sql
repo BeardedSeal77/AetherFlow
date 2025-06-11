@@ -17,6 +17,10 @@ DROP FUNCTION IF EXISTS interactions.process_quote_request;
 -- FUNCTION IMPLEMENTATION
 -- =============================================================================
 
+
+
+-- syntax error at $, use $$ LANGUAGE plpgsql SECURITY DEFINER;
+
 CREATE OR REPLACE FUNCTION interactions.process_quote_request(
     p_customer_id INTEGER,
     p_contact_id INTEGER,

@@ -1,3 +1,5 @@
+-- syntax error at $, use $$ LANGUAGE plpgsql SECURITY DEFINER;
+
 CREATE OR REPLACE FUNCTION interactions.get_quote_details(
     p_interaction_id INTEGER
 )

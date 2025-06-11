@@ -79,6 +79,51 @@ INSERT INTO system.system_config (config_key, config_value, config_type, descrip
 ('maintenance_mode', 'false', 'boolean', 'System maintenance mode flag');
 
 -- =============================================================================
+-- REFERENCE NUMBER FUNCTIONS
+-- =============================================================================
+
+
+
+
+
+
+
+-- =============================================================================
+-- SYSTEM UTILITY FUNCTIONS
+-- =============================================================================
+
+-- Function to get system configuration
+CREATE OR REPLACE FUNCTION system.get_config(key_name VARCHAR(100))
+RETURNS TEXT AS $$
+DECLARE
+    config_val TEXT;
+BEGIN
+    SELECT config_value INTO config_val
+    FROM system.system_config
+    WHERE config_key = key_name
+    AND is_active = true;
+    
+    RETURN config_val;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to set system configuration
+CREATE OR REPLACE FUNCTION system.set_config(key_name VARCHAR(100), value_param TEXT, type_param VARCHAR(20) DEFAULT 'string')
+RETURNS BOOLEAN AS $$
+BEGIN
+    INSERT INTO system.system_config (config_key, config_value, config_type)
+    VALUES (key_name, value_param, type_param)
+    ON CONFLICT (config_key)
+    DO UPDATE SET 
+        config_value = value_param,
+        config_type = type_param,
+        updated_at = CURRENT_TIMESTAMP;
+    
+    RETURN true;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================================================
 -- TRIGGERS FOR UPDATED_AT
 -- =============================================================================
 
