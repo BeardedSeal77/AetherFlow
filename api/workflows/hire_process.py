@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Hire Process Handler
+Hire Process Handler - Updated for Fixed create_hire Procedure
 File: api/workflows/hire_process.py
 
 This script handles the complete hire workflow process.
 It serves as the layer between the NextJS frontend and the database.
 
-The top section contains sample data variables that simulate frontend input.
-The rest of the script processes this data as it would in production.
-Later, the sample data can be replaced with actual frontend data.
+Updated to work with the fixed create_hire procedure that properly implements
+the 3-layer architecture (interactions → components → driver tasks).
 """
 
 import psycopg2
@@ -23,68 +22,69 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# SAMPLE DATA - Replace with frontend data in production
+# SAMPLE DATA - Updated to match your provided sample data
 # =============================================================================
 
-# Sample hire request data (would come from NextJS frontend)
+# Sample hire request data (using your provided sample data)
 SAMPLE_HIRE_REQUEST = {
     "customer": {
-        "customer_id": 1000,  # ABC Construction Ltd
+        "customer_id": 1,  # ABC Construction Ltd (your sample)
         "customer_name": "ABC Construction Ltd",
         "customer_code": "ABC001"
     },
     "contact": {
-        "contact_id": 1000,  # John Guy
+        "contact_id": 1,  # John Guy (your sample)
         "first_name": "John",
         "last_name": "Guy",
-        "email": "john.guy@abcconstruction.co.za",
-        "phone": "+27112345678"
+        "email": "john.guy@abcconstruction.com",
+        "phone": "+27111234567"
     },
     "site": {
-        "site_id": 1001,  # Sandton Office Development
-        "site_name": "Sandton Office Development",
-        "address": "123 Rivonia Road, Sandton, Johannesburg",
-        "site_contact_name": "John Guy",
-        "site_contact_phone": "+27112345678",
-        "delivery_instructions": "Main entrance, ask for site foreman"
+        "site_id": 2,  # Sandton Project Site (your sample)
+        "site_name": "Sandton Project Site",
+        "address": "45 Sandton Drive, Sandton, Gauteng, 2196",
+        "site_contact_name": "Site Foreman",
+        "site_contact_phone": "+27111234570",
+        "delivery_instructions": "Deliver to main gate, ask for foreman"
     },
     "equipment": [
         {
-            "equipment_category_id": 5,
-            "equipment_name": "Pedestrian Rammer",
-            "equipment_code": "TE1000",
+            "equipment_category_id": 1,  # Rammer (your sample)
+            "equipment_name": "Rammer",
+            "equipment_code": "RAM001",
             "quantity": 1,
             "accessories": [
-                {"accessory_id": 101, "accessory_name": "Safety Equipment", "quantity": 1, "is_default": True},
-                {"accessory_id": 102, "accessory_name": "Fuel Can", "quantity": 1, "is_default": False}
+                {"accessory_id": 1, "accessory_name": "2L Petrol", "quantity": 1, "is_default": True}
             ]
         },
         {
-            "equipment_category_id": 8,
-            "equipment_name": "Plate Compactor",
-            "equipment_code": "PC500",
+            "equipment_category_id": 2,  # T1000 Breaker (your sample)
+            "equipment_name": "T1000 Breaker", 
+            "equipment_code": "BRK001",
             "quantity": 1,
             "accessories": [
-                {"accessory_id": 103, "accessory_name": "Rubber Mat", "quantity": 1, "is_default": True}
+                {"accessory_id": 2, "accessory_name": "Spade Chisel", "quantity": 1, "is_default": True},
+                {"accessory_id": 3, "accessory_name": "Moil Chisel", "quantity": 1, "is_default": True}
             ]
         }
     ],
     "dates": {
-        "hire_start_date": "2025-06-10",
-        "delivery_date": "2025-06-10",
+        "hire_start_date": "2025-06-13",
+        "delivery_date": "2025-06-13", 
         "delivery_time": "09:00"
     },
     "notes": "Equipment needed for foundation work. Customer prefers morning delivery.",
-    "employee_id": 1002  # Hire controller processing the request
+    "priority": "medium",
+    "employee_id": 5  # John Controller (your sample)
 }
 
-# Database connection settings
+# Database connection settings - Updated for Docker setup
 DATABASE_CONFIG = {
     "host": "localhost",
     "port": 5432,
     "database": "task_management",
-    "user": "system_user",
-    "password": "system_password"
+    "user": "SYSTEM",        # Updated to match your Docker setup
+    "password": "SYSTEM"     # Updated to match your Docker setup
 }
 
 # =============================================================================
@@ -95,6 +95,7 @@ class HireProcessHandler:
     """
     Handles the complete hire workflow process.
     Acts as the middleware between frontend and database.
+    Updated to work with the fixed create_hire procedure.
     """
     
     def __init__(self, db_config: Dict[str, str]):
@@ -162,8 +163,8 @@ class HireProcessHandler:
             validation_errors.append("Hire start date is required")
         if not dates.get("delivery_date"):
             validation_errors.append("Delivery date is required")
-        
-        # Validate employee
+            
+        # Validate employee ID
         if not hire_request.get("employee_id"):
             validation_errors.append("Employee ID is required")
         
@@ -184,7 +185,8 @@ class HireProcessHandler:
         """
         try:
             query = """
-                SELECT id, customer_name, customer_code, status, credit_limit, payment_terms
+                SELECT id, customer_code, customer_name, is_company, status, 
+                       credit_limit, payment_terms
                 FROM core.customers 
                 WHERE id = %s AND status = 'active'
             """
@@ -224,8 +226,8 @@ class HireProcessHandler:
         """
         try:
             query = """
-                SELECT id, customer_id, first_name, last_name, email, phone_number, 
-                       is_primary_contact, is_billing_contact, status
+                SELECT id, customer_id, first_name, last_name, job_title, 
+                       email, phone_number, is_primary_contact, status
                 FROM core.contacts 
                 WHERE id = %s AND customer_id = %s AND status = 'active'
             """
@@ -296,7 +298,7 @@ class HireProcessHandler:
     
     def verify_equipment_exists(self, equipment_list: List[Dict]) -> Dict[str, Any]:
         """
-        Verify all equipment items exist and are active
+        Verify all equipment categories exist and are active
         
         Args:
             equipment_list: List of equipment items to verify
@@ -304,271 +306,158 @@ class HireProcessHandler:
         Returns:
             Dict with verification results
         """
-        verified_equipment = []
-        verification_errors = []
-        
         try:
+            equipment_ids = [item["equipment_category_id"] for item in equipment_list]
+            
+            # Query all equipment categories at once
+            query = """
+                SELECT id, category_code, category_name, description, is_active
+                FROM core.equipment_categories 
+                WHERE id = ANY(%s) AND is_active = true
+            """
+            self.cursor.execute(query, (equipment_ids,))
+            found_equipment = {eq['id']: dict(eq) for eq in self.cursor.fetchall()}
+            
+            # Check if all requested equipment was found
+            missing_equipment = []
+            verified_equipment = []
+            
             for item in equipment_list:
-                equipment_id = item.get("equipment_category_id")
-                query = """
-                    SELECT id, category_code, category_name, description, is_active
-                    FROM core.equipment_categories 
-                    WHERE id = %s AND is_active = true
-                """
-                self.cursor.execute(query, (equipment_id,))
-                equipment = self.cursor.fetchone()
-                
-                if equipment:
+                eq_id = item["equipment_category_id"]
+                if eq_id in found_equipment:
                     verified_equipment.append({
-                        "equipment": dict(equipment),
-                        "quantity": item.get("quantity"),
-                        "accessories": item.get("accessories", [])
+                        **found_equipment[eq_id],
+                        "quantity": item["quantity"]
                     })
                 else:
-                    verification_errors.append(f"Equipment ID {equipment_id} not found or inactive")
+                    missing_equipment.append(eq_id)
             
-            return {
-                "all_verified": len(verification_errors) == 0,
-                "verified_equipment": verified_equipment,
-                "errors": verification_errors,
-                "message": f"Verified {len(verified_equipment)} equipment items"
-            }
+            if missing_equipment:
+                return {
+                    "exists": False,
+                    "equipment": None,
+                    "message": f"Equipment categories not found: {missing_equipment}"
+                }
+            else:
+                return {
+                    "exists": True,
+                    "equipment": verified_equipment,
+                    "message": f"All {len(verified_equipment)} equipment categories verified"
+                }
+                
         except psycopg2.Error as e:
             logger.error(f"Error verifying equipment: {e}")
             return {
-                "all_verified": False,
-                "verified_equipment": [],
-                "errors": [f"Database error: {str(e)}"],
-                "message": "Equipment verification failed"
-            }
-    
-    def authenticate_employee(self, employee_id: int) -> Dict[str, Any]:
-        """
-        Authenticate employee and get their details
-        
-        Args:
-            employee_id: Employee ID to authenticate
-            
-        Returns:
-            Dict with authentication results
-        """
-        try:
-            query = """
-                SELECT id, employee_code, name, surname, role, status
-                FROM core.employees 
-                WHERE id = %s AND status = 'active'
-            """
-            self.cursor.execute(query, (employee_id,))
-            employee = self.cursor.fetchone()
-            
-            if employee:
-                return {
-                    "authenticated": True,
-                    "employee": dict(employee),
-                    "message": f"Employee authenticated: {employee['name']} {employee['surname']}"
-                }
-            else:
-                return {
-                    "authenticated": False,
-                    "employee": None,
-                    "message": "Employee not found or inactive"
-                }
-        except psycopg2.Error as e:
-            logger.error(f"Error authenticating employee: {e}")
-            return {
-                "authenticated": False,
-                "employee": None,
+                "exists": False,
+                "equipment": None,
                 "message": f"Database error: {str(e)}"
             }
     
-    def create_hire_interaction(self, hire_request: Dict, verified_data: Dict) -> Dict[str, Any]:
+    def call_create_hire_procedure(self, hire_request: Dict) -> Dict[str, Any]:
         """
-        Create the hire interaction and driver task
+        Call the fixed create_hire database procedure
         
         Args:
-            hire_request: Original hire request data
-            verified_data: All verified data from validation steps
+            hire_request: Complete hire request data
             
         Returns:
-            Dict with creation results
+            Dict with procedure results
         """
         try:
-            # Generate reference number
-            reference_number = self.generate_reference_number('hire')
+            # Prepare equipment list as JSONB
+            equipment_list = []
+            for item in hire_request["equipment"]:
+                equipment_list.append({
+                    "equipment_category_id": item["equipment_category_id"],
+                    "quantity": item["quantity"]
+                })
             
-            # Create interaction record
-            interaction_query = """
-                INSERT INTO interactions.interactions (
-                    customer_id, contact_id, employee_id, interaction_type,
-                    status, reference_number, contact_method, notes, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                RETURNING id
+            # Convert dates
+            hire_start_date = hire_request["dates"]["hire_start_date"]
+            delivery_date = hire_request["dates"]["delivery_date"] 
+            delivery_time = hire_request["dates"]["delivery_time"]
+            
+            # Call the fixed create_hire procedure
+            query = """
+                SELECT * FROM interactions.create_hire(
+                    p_customer_id := %s,
+                    p_contact_id := %s,
+                    p_site_id := %s,
+                    p_equipment_list := %s::jsonb,
+                    p_hire_start_date := %s,
+                    p_delivery_date := %s,
+                    p_delivery_time := %s::time,
+                    p_notes := %s,
+                    p_priority := %s,
+                    p_employee_id := %s
+                )
             """
             
-            interaction_values = (
+            self.cursor.execute(query, (
                 hire_request["customer"]["customer_id"],
                 hire_request["contact"]["contact_id"],
-                hire_request["employee_id"],
-                'hire',
-                'new',
-                reference_number,
-                'phone',  # Default contact method
-                hire_request.get("notes", ""),
-                datetime.now()
-            )
+                hire_request["site"]["site_id"],
+                json.dumps(equipment_list),
+                hire_start_date,
+                delivery_date,
+                delivery_time,
+                hire_request.get("notes"),
+                hire_request.get("priority", "medium"),
+                hire_request.get("employee_id", 1)
+            ))
             
-            self.cursor.execute(interaction_query, interaction_values)
-            interaction_id = self.cursor.fetchone()['id']
+            result = self.cursor.fetchone()
             
-            logger.info(f"✅ Created interaction {reference_number} (ID: {interaction_id})")
-            
-            # Create driver task
-            task_result = self.create_driver_task(
-                interaction_id, 
-                reference_number, 
-                hire_request, 
-                verified_data
-            )
-            
-            if task_result["success"]:
-                # Commit the transaction
-                self.connection.commit()
+            if result:
+                result_dict = dict(result)
                 
-                return {
-                    "success": True,
-                    "interaction_id": interaction_id,
-                    "reference_number": reference_number,
-                    "driver_task_id": task_result["task_id"],
-                    "message": f"Hire {reference_number} created successfully"
-                }
+                if result_dict.get("success"):
+                    # Commit the transaction
+                    self.connection.commit()
+                    logger.info(f"✅ Hire created successfully: {result_dict.get('reference_number')}")
+                    return {
+                        "success": True,
+                        "interaction_id": result_dict.get("interaction_id"),
+                        "reference_number": result_dict.get("reference_number"),
+                        "driver_task_id": result_dict.get("driver_task_id"),
+                        "assigned_driver_name": result_dict.get("assigned_driver_name"),
+                        "equipment_count": result_dict.get("equipment_count"),
+                        "total_quantity": result_dict.get("total_quantity"),
+                        "message": result_dict.get("message")
+                    }
+                else:
+                    # Rollback on failure
+                    self.connection.rollback()
+                    logger.error(f"❌ Hire creation failed: {result_dict.get('message')}")
+                    return {
+                        "success": False,
+                        "message": result_dict.get("message", "Unknown error occurred")
+                    }
             else:
-                # Rollback if driver task creation failed
                 self.connection.rollback()
                 return {
                     "success": False,
-                    "message": f"Driver task creation failed: {task_result['message']}"
+                    "message": "No result returned from create_hire procedure"
                 }
                 
         except psycopg2.Error as e:
-            self.connection.rollback()
-            logger.error(f"Error creating hire interaction: {e}")
+            # Rollback on database error
+            if self.connection:
+                self.connection.rollback()
+            logger.error(f"Database error in create_hire: {e}")
             return {
                 "success": False,
                 "message": f"Database error: {str(e)}"
             }
-    
-    def create_driver_task(self, interaction_id: int, reference_number: str, 
-                          hire_request: Dict, verified_data: Dict) -> Dict[str, Any]:
-        """
-        Create driver delivery task for the hire
-        
-        Args:
-            interaction_id: ID of the created interaction
-            reference_number: Reference number for the hire
-            hire_request: Original hire request data
-            verified_data: All verified data
-            
-        Returns:
-            Dict with task creation results
-        """
-        try:
-            # Build equipment summary
-            equipment_summary = ", ".join([
-                f"{item['equipment']['category_name']} (Qty: {item['quantity']})"
-                for item in verified_data['equipment']['verified_equipment']
-            ])
-            
-            # Build full address
-            site = verified_data['site']['site']
-            full_address = site['address_line1']
-            if site.get('address_line2'):
-                full_address += f", {site['address_line2']}"
-            full_address += f", {site['city']}"
-            
-            # Create driver task
-            task_query = """
-                INSERT INTO tasks.drivers_taskboard (
-                    interaction_id, created_by, task_type, priority, status,
-                    scheduled_date, scheduled_time, estimated_duration,
-                    customer_name, contact_name, contact_phone, site_address,
-                    equipment_summary, special_instructions, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """
-            
-            contact = verified_data['contact']['contact']
-            contact_name = f"{contact['first_name']} {contact['last_name']}"
-            
-            task_values = (
-                interaction_id,
-                hire_request["employee_id"],
-                'delivery',
-                'medium',  # Default priority
-                'backlog',  # Starts unassigned
-                hire_request["dates"]["delivery_date"],
-                hire_request["dates"]["delivery_time"],
-                90,  # 90 minutes estimated duration
-                hire_request["customer"]["customer_name"],
-                contact_name,
-                contact.get('phone_number', ''),
-                full_address,
-                equipment_summary,
-                hire_request.get("notes", ""),
-                datetime.now()
-            )
-            
-            self.cursor.execute(task_query, task_values)
-            task_id = self.cursor.fetchone()['id']
-            
-            logger.info(f"✅ Created driver task (ID: {task_id})")
-            
-            return {
-                "success": True,
-                "task_id": task_id,
-                "message": f"Driver delivery task created"
-            }
-            
-        except psycopg2.Error as e:
-            logger.error(f"Error creating driver task: {e}")
-            return {
-                "success": False,
-                "task_id": None,
-                "message": f"Database error: {str(e)}"
-            }
-    
-    def generate_reference_number(self, interaction_type: str) -> str:
-        """
-        Generate reference number for interaction
-        
-        Args:
-            interaction_type: Type of interaction (hire, off_hire, etc.)
-            
-        Returns:
-            Generated reference number
-        """
-        try:
-            # Get prefix
-            self.cursor.execute("SELECT get_prefix_for_interaction(%s)", (interaction_type,))
-            prefix_result = self.cursor.fetchone()
-            prefix = list(prefix_result.values())[0] if prefix_result else 'HR'
-            
-            # Get date part
-            date_part = datetime.now().strftime('%y%m%d')
-            
-            # Get sequence
-            self.cursor.execute("SELECT get_next_sequence_for_date(%s, %s)", (prefix, date_part))
-            seq_result = self.cursor.fetchone()
-            sequence = list(seq_result.values())[0] if seq_result else 1
-            
-            reference = f"{prefix}{date_part}{sequence:03d}"
-            logger.info(f"📝 Generated reference number: {reference}")
-            return reference
-            
         except Exception as e:
-            logger.warning(f"Reference generation failed, using fallback: {e}")
-            # Fallback reference generation
-            date_part = datetime.now().strftime('%y%m%d')
-            return f"HR{date_part}001"
+            # Rollback on any other error
+            if self.connection:
+                self.connection.rollback()
+            logger.error(f"Unexpected error in create_hire: {e}")
+            return {
+                "success": False,
+                "message": f"Unexpected error: {str(e)}"
+            }
     
     def process_hire_request(self, hire_request: Dict) -> Dict[str, Any]:
         """
@@ -636,37 +525,17 @@ class HireProcessHandler:
         # Step 5: Verify equipment
         logger.info("🔧 Step 5: Verifying equipment")
         equipment_verification = self.verify_equipment_exists(hire_request["equipment"])
-        if not equipment_verification["all_verified"]:
+        if not equipment_verification["exists"]:
             return {
                 "success": False,
                 "stage": "equipment_verification",
-                "message": "Equipment verification failed",
-                "errors": equipment_verification["errors"]
+                "message": equipment_verification["message"]
             }
         logger.info(f"✅ {equipment_verification['message']}")
         
-        # Step 6: Authenticate employee
-        logger.info("🔐 Step 6: Authenticating employee")
-        employee_auth = self.authenticate_employee(hire_request["employee_id"])
-        if not employee_auth["authenticated"]:
-            return {
-                "success": False,
-                "stage": "employee_authentication",
-                "message": employee_auth["message"]
-            }
-        logger.info(f"✅ {employee_auth['message']}")
-        
-        # Step 7: Create hire interaction and driver task
-        logger.info("💾 Step 7: Creating hire interaction and driver task")
-        verified_data = {
-            "customer": customer_verification,
-            "contact": contact_verification,
-            "site": site_verification,
-            "equipment": equipment_verification,
-            "employee": employee_auth
-        }
-        
-        creation_result = self.create_hire_interaction(hire_request, verified_data)
+        # Step 6: Create hire interaction using fixed procedure
+        logger.info("💾 Step 6: Creating hire interaction and driver task")
+        creation_result = self.call_create_hire_procedure(hire_request)
         
         if creation_result["success"]:
             logger.info(f"🎉 Hire request processed successfully: {creation_result['reference_number']}")
@@ -676,6 +545,9 @@ class HireProcessHandler:
                 "interaction_id": creation_result["interaction_id"],
                 "reference_number": creation_result["reference_number"],
                 "driver_task_id": creation_result["driver_task_id"],
+                "assigned_driver_name": creation_result.get("assigned_driver_name", "Unassigned"),
+                "equipment_count": creation_result.get("equipment_count", 0),
+                "total_quantity": creation_result.get("total_quantity", 0),
                 "message": creation_result["message"]
             }
         else:
@@ -692,16 +564,18 @@ class HireProcessHandler:
 
 def main():
     """
-    Main execution function
+    Main execution function - Updated for fixed create_hire procedure
     In production, this would be called by FastAPI/Flask with frontend data
     """
-    print("🎯 HIRE PROCESS - Equipment Hire Request Processing")
+    print("🎯 HIRE PROCESS - Equipment Hire Request Processing (Updated)")
     print("=" * 60)
     print(f"📝 Processing hire request for: {SAMPLE_HIRE_REQUEST['customer']['customer_name']}")
     print(f"👤 Contact: {SAMPLE_HIRE_REQUEST['contact']['first_name']} {SAMPLE_HIRE_REQUEST['contact']['last_name']}")
     print(f"🏢 Site: {SAMPLE_HIRE_REQUEST['site']['site_name']}")
     print(f"📅 Delivery: {SAMPLE_HIRE_REQUEST['dates']['delivery_date']} at {SAMPLE_HIRE_REQUEST['dates']['delivery_time']}")
     print(f"🔧 Equipment: {len(SAMPLE_HIRE_REQUEST['equipment'])} items")
+    for item in SAMPLE_HIRE_REQUEST['equipment']:
+        print(f"   - {item['quantity']}x {item['equipment_name']} (ID: {item['equipment_category_id']})")
     print("=" * 60)
     
     # Initialize hire processor
@@ -726,8 +600,13 @@ def main():
             print(f"📝 Reference Number: {result['reference_number']}")
             print(f"🆔 Interaction ID: {result['interaction_id']}")
             print(f"🚛 Driver Task ID: {result['driver_task_id']}")
+            print(f"👷 Assigned Driver: {result.get('assigned_driver_name', 'Unassigned')}")
+            print(f"📦 Equipment Count: {result.get('equipment_count', 0)} categories")
+            print(f"📊 Total Quantity: {result.get('total_quantity', 0)} items")
             print("\n📊 You can verify this in the database:")
             print(f"   SELECT * FROM interactions.interactions WHERE reference_number = '{result['reference_number']}';")
+            print(f"   SELECT * FROM interactions.component_equipment_list WHERE interaction_id = {result['interaction_id']};")
+            print(f"   SELECT * FROM interactions.component_hire_details WHERE interaction_id = {result['interaction_id']};")
             print(f"   SELECT * FROM tasks.drivers_taskboard WHERE interaction_id = {result['interaction_id']};")
         else:
             print(f"❌ FAILED at {result.get('stage', 'unknown')} stage")

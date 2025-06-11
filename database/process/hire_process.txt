@@ -1,133 +1,466 @@
-# Hire Process Documentation
+# Hire Process Documentation - Working Implementation
 
 ## Overview
 
-Simple hire workflow where users build hire requests through searchable selection components.
+This document describes the complete working hire process flow, from Python input to database storage. The process follows a validated 3-layer architecture that successfully creates hire interactions, equipment components, hire details, and driver tasks.
 
-## User Interface Flow
+## Architecture Summary
 
-### Step 1: Customer Selection
-- **User Action:** Selects customer from searchable list box
-- **Required Procedure:** `core.search_customers(search_term)`
-- **Returns:** Customer ID, name, code for selection
+**3-Layer Database Design:**
+- **Layer 1**: `interactions.interactions` - Main interaction record
+- **Layer 2**: `interactions.component_equipment_list` + `interactions.component_hire_details` - Detailed components  
+- **Layer 3**: `tasks.drivers_taskboard` - Driver delivery task
 
-### Step 2: Contact Selection  
-- **User Action:** Selects contact from searchable list box (filtered by selected customer)
-- **Required Procedure:** `core.get_customer_contacts(customer_id)`
-- **Returns:** Contact ID, name, job title, phone, email
-
-### Step 3: Site Selection
-- **User Action:** Selects site from searchable list box (filtered by selected customer)
-- **Required Procedure:** `core.get_customer_sites(customer_id)`
-- **Returns:** Site ID, name, address, delivery instructions
-
-### Step 4: Date Input
-- **User Action:** Inputs hire start date and delivery date
-- **Backend Process:** Simple date validation
-
-### Step 5: Equipment Selection
-- **User Action:** Selects equipment from searchable list box and chooses quantity
-- **Required Procedure:** `core.get_equipment_list()` (basic list, no availability checking)
-- **Returns:** Equipment ID, name, description, daily rate
-
-### Step 6: Accessories Selection
-- **User Action:** Selects accessories from searchable list box (filtered by selected equipment)
-- **Backend Process:** 
-  - Load accessories for selected equipment
-  - Default accessories already checked/enabled
-  - User can adjust quantities or add optional accessories
-- **Required Procedure:** `core.get_equipment_accessories(equipment_category_id)`
-- **Returns:** Accessory ID, name, type (default/optional), default quantity
-
-### Step 7: Notes (Optional)
-- **User Action:** Adds notes if needed
-- **Backend Process:** Simple text field
-
-### Step 8: Submission
-- **User Action:** Submits hire request
-- **Backend Process:** Calls `interactions.create_hire()` 
-- **Result:** Creates interaction and driver task
-
-## Required Database Procedures
-
-### 1. `core.search_customers(search_term)`
-**Purpose:** Get searchable customer list  
-**Returns:** Customer ID, name, code
-
-### 2. `core.get_customer_contacts(customer_id)`
-**Purpose:** Get contacts for selected customer  
-**Returns:** Contact ID, name, job title, phone, email
-
-### 3. `core.get_customer_sites(customer_id)`
-**Purpose:** Get sites for selected customer  
-**Returns:** Site ID, name, address, delivery instructions
-
-### 4. `core.get_equipment_list()` 
-**Purpose:** Get basic equipment list (no availability checking)  
-**Returns:** Equipment ID, name, description, daily rate
-
-### 5. `core.get_equipment_accessories(equipment_category_id)`
-**Purpose:** Get accessories for selected equipment  
-**Returns:** Accessory ID, name, type (default/optional), default quantity
-
-### 6. `interactions.create_hire()`
-**Purpose:** Create hire interaction and driver task  
-**Process:**
-- Creates interaction record
-- Adds equipment to `component_equipment_list`
-- Creates hire details component
-- Creates driver delivery task
-
-## Data Flow
-
+**Processing Flow:**
 ```
-User Input → Python Layer → Database Procedures → Result
+Frontend Data → Python Validation → Database Procedures → 3-Layer Storage
+```
 
-Customer Selection → core.search_customers() → Customer ID
-Contact Selection → core.get_customer_contacts() → Contact ID  
-Site Selection → core.get_customer_sites() → Site ID
-Equipment Selection → core.get_equipment_list() → Equipment ID + Quantity
-Accessories Selection → core.get_equipment_accessories() → Accessory IDs + Quantities
-Submit → interactions.create_hire() → Interaction + Driver Task
+## Input Data Structure
+
+The Python program (`api/workflows/hire_process.py`) expects this data structure:
+
+```python
+HIRE_REQUEST = {
+    "customer": {
+        "customer_id": 1,
+        "customer_name": "ABC Construction Ltd",
+        "customer_code": "ABC001"
+    },
+    "contact": {
+        "contact_id": 1,
+        "first_name": "John",
+        "last_name": "Guy",
+        "email": "john.guy@abcconstruction.com",
+        "phone": "+27111234567"
+    },
+    "site": {
+        "site_id": 2,
+        "site_name": "Sandton Project Site",
+        "address": "45 Sandton Drive, Sandton, Gauteng, 2196",
+        "site_contact_name": "Site Foreman",
+        "site_contact_phone": "+27111234570",
+        "delivery_instructions": "Deliver to main gate, ask for foreman"
+    },
+    "equipment": [
+        {
+            "equipment_category_id": 1,
+            "equipment_name": "Rammer",
+            "equipment_code": "RAM001",
+            "quantity": 1,
+            "accessories": [
+                {
+                    "accessory_id": 1,
+                    "accessory_name": "2L Petrol",
+                    "quantity": 1,
+                    "is_default": True
+                }
+            ]
+        },
+        {
+            "equipment_category_id": 2,
+            "equipment_name": "T1000 Breaker",
+            "equipment_code": "BRK001", 
+            "quantity": 1,
+            "accessories": [
+                {
+                    "accessory_id": 2,
+                    "accessory_name": "Spade Chisel",
+                    "quantity": 1,
+                    "is_default": True
+                },
+                {
+                    "accessory_id": 3,
+                    "accessory_name": "Moil Chisel",
+                    "quantity": 1,
+                    "is_default": True
+                }
+            ]
+        }
+    ],
+    "dates": {
+        "hire_start_date": "2025-06-10",
+        "delivery_date": "2025-06-10",
+        "delivery_time": "09:00"
+    },
+    "notes": "Equipment needed for foundation work. Customer prefers morning delivery.",
+    "priority": "medium",
+    "employee_id": 5
+}
+```
+
+## Python Processing Steps
+
+### 1. **Input Validation** (`validate_hire_request()`)
+
+**Validates:**
+- Customer ID exists
+- Contact ID exists  
+- Site ID exists
+- Equipment list is not empty
+- Each equipment item has valid category ID and quantity > 0
+- Required dates are present
+- Employee ID exists
+
+**Returns:** Validation status and error list
+
+### 2. **Database Verification** (5 verification steps)
+
+#### Step 2A: **Customer Verification** (`verify_customer_exists()`)
+```sql
+SELECT id, customer_code, customer_name, is_company, status, 
+       credit_limit, payment_terms
+FROM core.customers 
+WHERE id = %s AND status = 'active'
+```
+**Purpose:** Ensure customer exists and is active  
+**Returns:** Customer details or error
+
+#### Step 2B: **Contact Verification** (`verify_contact_exists()`)
+```sql
+SELECT id, customer_id, first_name, last_name, job_title, 
+       email, phone_number, is_primary_contact, status
+FROM core.contacts 
+WHERE id = %s AND customer_id = %s AND status = 'active'
+```
+**Purpose:** Ensure contact belongs to customer and is active  
+**Returns:** Contact details or error
+
+#### Step 2C: **Site Verification** (`verify_site_exists()`)
+```sql
+SELECT id, customer_id, site_name, address_line1, address_line2, 
+       city, postal_code, site_type, site_contact_name, 
+       site_contact_phone, delivery_instructions, is_active
+FROM core.sites 
+WHERE id = %s AND customer_id = %s AND is_active = true
+```
+**Purpose:** Ensure site belongs to customer and is active  
+**Returns:** Site details or error
+
+#### Step 2D: **Equipment Verification** (`verify_equipment_exists()`)
+```sql
+SELECT id, category_code, category_name, description, is_active
+FROM core.equipment_categories 
+WHERE id = ANY(%s) AND is_active = true
+```
+**Purpose:** Ensure all equipment categories exist and are active  
+**Returns:** Equipment details or error
+
+### 3. **Hire Creation** (`call_create_hire_procedure()`)
+
+**Calls:** `interactions.create_hire()` procedure with all validated data
+
+**Equipment List Conversion:**
+```python
+# Convert from complex structure to simple JSONB
+equipment_list = []
+for item in hire_request["equipment"]:
+    equipment_list.append({
+        "equipment_category_id": item["equipment_category_id"],
+        "quantity": item["quantity"]
+    })
+```
+
+**Procedure Call:**
+```sql
+SELECT * FROM interactions.create_hire(
+    p_customer_id := %s,
+    p_contact_id := %s,
+    p_site_id := %s,
+    p_equipment_list := %s::jsonb,
+    p_hire_start_date := %s,
+    p_delivery_date := %s,
+    p_delivery_time := %s::time,
+    p_notes := %s,
+    p_priority := %s,
+    p_employee_id := %s
+)
+```
+
+## Database Procedure: `interactions.create_hire()`
+
+### Input Parameters
+
+```sql
+p_customer_id INTEGER,           -- Validated customer ID
+p_contact_id INTEGER,            -- Validated contact ID  
+p_site_id INTEGER,               -- Validated site ID
+p_equipment_list JSONB,          -- [{"equipment_category_id": 1, "quantity": 2}]
+p_hire_start_date DATE,          -- When hire period begins
+p_delivery_date DATE,            -- When equipment should be delivered
+p_delivery_time TIME,            -- Delivery time (default: 09:00)
+p_notes TEXT,                    -- Special instructions
+p_priority VARCHAR(20),          -- Task priority (default: medium)
+p_employee_id INTEGER            -- Employee creating the hire
+```
+
+### Processing Steps
+
+#### Step 1: **Validation**
+- Verify customer exists and is active
+- Verify contact belongs to customer (using `core.get_customer_contacts()`)
+- Verify site belongs to customer (using `core.get_customer_sites()`)
+- Validate equipment categories exist and are active
+- Validate dates are logical (delivery >= hire_start >= today)
+- Validate quantities are positive
+
+#### Step 2: **Reference Number Generation**
+```sql
+v_reference_number := system.generate_reference_number('hire');
+-- Generates: HR250611001 (HR + YYMMDD + sequence)
+```
+
+#### Step 3: **Layer 1 - Main Interaction**
+```sql
+INSERT INTO interactions.interactions (
+    customer_id, contact_id, employee_id, 
+    interaction_type, status, reference_number,
+    contact_method, notes, created_at, updated_at
+) VALUES (
+    p_customer_id, p_contact_id, v_employee_id,
+    'hire', 'pending', v_reference_number,
+    'phone', p_notes, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+) RETURNING id INTO v_interaction_id;
+```
+
+#### Step 4: **Layer 2A - Equipment List Component**
+```sql
+-- For each equipment item in the JSONB array:
+FOR v_equipment_item IN SELECT * FROM jsonb_array_elements(p_equipment_list)
+LOOP
+    INSERT INTO interactions.component_equipment_list (
+        interaction_id,
+        equipment_category_id,
+        quantity,
+        special_requirements,
+        created_at
+    ) VALUES (
+        v_interaction_id,
+        (v_equipment_item->>'equipment_category_id')::INTEGER,
+        (v_equipment_item->>'quantity')::INTEGER,
+        v_equipment_item->>'notes',
+        CURRENT_TIMESTAMP
+    );
+END LOOP;
+```
+
+#### Step 5: **Layer 2B - Hire Details Component**
+```sql
+INSERT INTO interactions.component_hire_details (
+    interaction_id,
+    site_id,
+    deliver_date,
+    deliver_time,
+    start_date,
+    start_time,
+    delivery_method,
+    special_instructions,
+    created_at
+) VALUES (
+    v_interaction_id,
+    p_site_id,
+    p_delivery_date,
+    p_delivery_time,
+    p_hire_start_date,
+    p_delivery_time,
+    'deliver',
+    p_notes,
+    CURRENT_TIMESTAMP
+);
+```
+
+#### Step 6: **Layer 3 - Driver Task Creation**
+```sql
+INSERT INTO tasks.drivers_taskboard (
+    interaction_id,
+    task_type,
+    priority,
+    status,
+    customer_name,
+    contact_name,
+    contact_phone,
+    site_address,
+    site_delivery_instructions,
+    equipment_summary,
+    scheduled_date,
+    scheduled_time,
+    estimated_duration,
+    assigned_to,
+    created_by,
+    created_at,
+    updated_at
+) VALUES (
+    v_interaction_id,
+    'delivery',                    -- Task type
+    p_priority,                    -- From hire request
+    'backlog',                     -- Unassigned status
+    v_customer_name,               -- Customer name
+    v_contact_name,                -- Contact name  
+    v_contact_phone,               -- Contact phone
+    v_site_address,                -- Full site address
+    p_notes,                       -- Delivery instructions
+    v_equipment_summary,           -- "1x Rammer, 1x T1000 Breaker"
+    p_delivery_date,               -- Scheduled delivery date
+    p_delivery_time,               -- Scheduled delivery time
+    90,                            -- 90 minutes estimated duration
+    NULL,                          -- No driver assigned (backlog)
+    v_employee_id,                 -- Creating employee
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+) RETURNING id INTO v_driver_task_id;
+```
+
+### Return Values
+
+```sql
+RETURNS TABLE(
+    success BOOLEAN,               -- True if successful
+    message TEXT,                  -- Success/error message
+    interaction_id INTEGER,        -- Created interaction ID
+    reference_number VARCHAR(20),  -- Generated reference (HR250611001)
+    driver_task_id INTEGER,        -- Created driver task ID
+    assigned_driver_name TEXT,     -- "Unassigned (Backlog)"
+    equipment_count INTEGER,       -- Number of equipment categories
+    total_quantity INTEGER         -- Total quantity of all equipment
+)
 ```
 
 ## Database Tables Used
 
-- `core.customers` - Customer master data
-- `core.contacts` - Customer contacts  
-- `core.sites` - Customer sites
-- `core.equipment_categories` - Equipment list
-- `core.equipment_accessories` - Equipment accessories
-- `interactions.interactions` - Main interaction record
-- `interactions.component_equipment_list` - Selected equipment
-- `interactions.component_hire_details` - Hire details  
-- `tasks.drivers_taskboard` - Driver delivery task
+### Core Tables (Master Data)
+- `core.customers` - Customer information
+- `core.contacts` - Customer contact persons
+- `core.sites` - Customer delivery sites  
+- `core.equipment_categories` - Equipment master data
+- `core.employees` - System users
 
-## Python Layer Structure
+### Layer 1: Main Interaction
+- `interactions.interactions` - Universal interaction entry point
 
+### Layer 2: Components (Details)
+- `interactions.component_equipment_list` - Selected equipment with quantities
+- `interactions.component_hire_details` - Hire-specific details (dates, site, method)
+
+### Layer 3: Tasks (Actions)
+- `tasks.drivers_taskboard` - Driver delivery tasks in backlog status
+
+## Supporting Procedures Used
+
+### Customer Management
+- `core.get_customer_contacts(customer_id)` - Get contacts for customer validation
+- `core.get_customer_sites(customer_id)` - Get sites for customer validation
+
+### System Utilities  
+- `system.generate_reference_number('hire')` - Generate unique HR reference numbers
+
+## Result Flow
+
+### Successful Hire Creation
+
+**Python Returns:**
 ```python
-# Collect user selections
-hire_data = {
-    "customer_id": selected_customer_id,
-    "contact_id": selected_contact_id,
-    "site_id": selected_site_id,
-    "hire_start_date": start_date,
-    "delivery_date": delivery_date,
-    "equipment_list": [
-        {"equipment_category_id": 1, "quantity": 2},
-        {"equipment_category_id": 3, "quantity": 1}
-    ],
-    "notes": "Special delivery instructions"
+{
+    "success": True,
+    "stage": "completed",
+    "interaction_id": 1001,
+    "reference_number": "HR250611001", 
+    "driver_task_id": 2001,
+    "assigned_driver_name": "Unassigned (Backlog)",
+    "equipment_count": 2,
+    "total_quantity": 2,
+    "message": "Hire created successfully. Reference: HR250611001"
 }
-
-# Call hire creation procedure
-result = interactions.create_hire(hire_data)
 ```
 
-## Result
+**Database State:**
+```sql
+-- Layer 1: Main interaction
+SELECT * FROM interactions.interactions WHERE id = 1001;
+-- Shows: hire interaction with reference HR250611001
 
-- Creates hire interaction record
-- Creates driver delivery task
-- Returns reference number and task ID
+-- Layer 2A: Equipment components  
+SELECT * FROM interactions.component_equipment_list WHERE interaction_id = 1001;
+-- Shows: 1x Rammer (ID 1), 1x T1000 Breaker (ID 2)
 
-Simple, straightforward hire process with searchable selections and basic equipment/accessories handling using existing database procedures.
+-- Layer 2B: Hire details
+SELECT * FROM interactions.component_hire_details WHERE interaction_id = 1001;
+-- Shows: delivery details, dates, site info
+
+-- Layer 3: Driver task
+SELECT * FROM tasks.drivers_taskboard WHERE interaction_id = 1001;
+-- Shows: delivery task in 'backlog' status, unassigned
+```
+
+## Business Rules Implemented
+
+### Open Hire Model
+- **No end dates required** - Aligns with business practice of open hires
+- **No duration tracking** - Equipment is hired until customer returns it
+- **Delivery-focused** - System optimizes for getting equipment to customer
+
+### Task Management
+- **Backlog System** - New tasks start unassigned in backlog
+- **Manual Assignment** - Drivers are assigned manually later
+- **Priority Handling** - Urgent tasks get precedence in assignment
+
+### Data Integrity
+- **Referential Integrity** - All foreign keys validated
+- **Business Validation** - Customers must be active, equipment must exist
+- **Relationship Validation** - Contacts and sites must belong to customer
+
+## Future Enhancements (Tomorrow)
+
+### Driver Task Equipment Linking
+- Move driver task creation to separate procedure
+- Create linking tables for equipment → driver tasks  
+- Create linking tables for accessories → driver tasks
+- Enable equipment verification and tracking
+
+### Equipment Availability
+- Add availability checking when inventory system ready
+- Filter equipment lists based on current stock
+- Prevent double-booking of equipment
+
+### Pricing Integration
+- Add pricing calculations to hire creation
+- Generate quotes automatically
+- Track hire values and deposits
+
+## Testing Verification
+
+**Test the complete flow:**
+```bash
+python api/workflows/hire_process.py
+```
+
+**Verify database entries:**
+```sql
+-- Check latest hire
+SELECT * FROM interactions.interactions 
+WHERE interaction_type = 'hire' 
+ORDER BY created_at DESC LIMIT 1;
+
+-- Check equipment components
+SELECT * FROM interactions.component_equipment_list 
+WHERE interaction_id = [latest_interaction_id];
+
+-- Check hire details  
+SELECT * FROM interactions.component_hire_details
+WHERE interaction_id = [latest_interaction_id];
+
+-- Check driver task
+SELECT * FROM tasks.drivers_taskboard
+WHERE interaction_id = [latest_interaction_id];
+```
+
+## Success Metrics
+
+✅ **Input Data Validation** - All required fields validated  
+✅ **Database Integrity** - All foreign keys and constraints respected  
+✅ **3-Layer Architecture** - Complete data storage across all layers  
+✅ **Reference Generation** - Unique hire references (HR250611001)  
+✅ **Task Creation** - Driver tasks created in backlog for assignment  
+✅ **Error Handling** - Comprehensive error messages and rollback  
+✅ **Business Alignment** - Matches open hire business model  
+
+The hire process is now fully functional and ready for production use!
