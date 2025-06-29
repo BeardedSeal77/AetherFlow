@@ -1,0 +1,443 @@
+# SYSTEM ARCHITECTURE SPECIFICATION
+## Equipment Hire Management System
+
+---
+
+## ARCHITECTURE OVERVIEW
+
+### **Layer 1: Frontend (NextJS)**
+- **Role**: Pure presentation layer
+- **Responsibilities**: User interface, form rendering, data display
+- **Data**: Never directly accesses database
+- **Communication**: API calls to Python layer only
+
+### **Layer 2: Python Business Logic Layer**
+- **Role**: Data orchestration, business rules, validation
+- **Responsibilities**: All business logic, data transformation, error handling
+- **Data**: Calls stored procedures and queries exclusively
+- **Communication**: API endpoints for frontend, database procedures for data
+
+### **Layer 3: Database Layer (PostgreSQL)**
+- **Role**: Data storage and retrieval
+- **Responsibilities**: Stored procedures, complex queries, data integrity
+- **Data**: Raw data storage with referential integrity
+- **Communication**: Stored procedures and functions only
+
+---
+
+## HIRE PROCESS SYSTEM SPECIFICATION
+
+### **FRONTEND → PYTHON → DATABASE FLOW**
+
+```
+[NextJS Frontend] 
+    ↓ HTTP API Calls
+[Python Flask Layer] 
+    ↓ Stored Procedure Calls
+[PostgreSQL Database]
+```
+
+---
+
+## 1. CUSTOMER SELECTION PROCEDURES
+
+### **1.1 Get Customer List**
+**Procedure**: `get_customer_list()`
+- **Inputs**: 
+  - `search_term` (optional string)
+  - `include_inactive` (boolean, default false)
+- **Outputs**: 
+  - Customer list with ID, code, name, company status, credit limit
+- **Database**: Stored procedure `sp_get_customers_for_selection`
+- **Python Function**: `CustomerService.get_customer_list()`
+- **Frontend Call**: `GET /api/customers?search=ABC&active_only=true`
+
+### **1.2 Get Customer Contacts**
+**Procedure**: `get_customer_contacts(customer_id)`
+- **Inputs**: 
+  - `customer_id` (integer, required)
+- **Outputs**: 
+  - Contact list with ID, name, title, phone, email, contact types
+- **Database**: Stored procedure `sp_get_customer_contacts`
+- **Python Function**: `CustomerService.get_customer_contacts()`
+- **Frontend Call**: `GET /api/customers/{customer_id}/contacts`
+
+### **1.3 Get Customer Sites**
+**Procedure**: `get_customer_sites(customer_id)`
+- **Inputs**: 
+  - `customer_id` (integer, required)
+- **Outputs**: 
+  - Site list with ID, code, name, full address, contact details
+- **Database**: Stored procedure `sp_get_customer_sites`
+- **Python Function**: `CustomerService.get_customer_sites()`
+- **Frontend Call**: `GET /api/customers/{customer_id}/sites`
+
+---
+
+## 2. EQUIPMENT SELECTION PROCEDURES
+
+### **2.1 Get Equipment Types (Generic Mode)**
+**Procedure**: `get_equipment_types_available()`
+- **Inputs**: 
+  - `search_term` (optional string)
+  - `category_filter` (optional string)
+  - `delivery_date` (date, for availability checking)
+- **Outputs**: 
+  - Equipment type list with ID, code, name, description, available quantity
+- **Database**: Stored procedure `sp_get_available_equipment_types`
+- **Python Function**: `EquipmentService.get_equipment_types()`
+- **Frontend Call**: `GET /api/equipment/types?delivery_date=2025-06-30`
+
+### **2.2 Get Individual Equipment (Specific Mode)**
+**Procedure**: `get_individual_equipment_available()`
+- **Inputs**: 
+  - `equipment_type_id` (optional integer)
+  - `delivery_date` (date)
+  - `return_date` (date)
+- **Outputs**: 
+  - Individual equipment list with ID, asset_code, model, condition, type_name
+- **Database**: Stored procedure `sp_get_available_individual_equipment`
+- **Python Function**: `EquipmentService.get_individual_equipment()`
+- **Frontend Call**: `GET /api/equipment/individual?type_id=1&delivery_date=2025-06-30`
+
+### **2.3 Get Equipment Accessories**
+**Procedure**: `get_equipment_accessories(equipment_type_ids[])`
+- **Inputs**: 
+  - `equipment_type_ids` (array of integers)
+  - `include_defaults` (boolean, default true)
+- **Outputs**: 
+  - Accessory list with ID, name, type, increment_amount, unit_measure, is_consumable
+- **Database**: Stored procedure `sp_get_equipment_accessories`
+- **Python Function**: `EquipmentService.get_accessories()`
+- **Frontend Call**: `POST /api/equipment/accessories` (with equipment_type_ids array)
+
+### **2.4 Calculate Auto-Added Accessories**
+**Procedure**: `calculate_auto_accessories(equipment_selections[])`
+- **Inputs**: 
+  - `equipment_selections` (array of {type_id, quantity} objects)
+- **Outputs**: 
+  - Auto-accessory list with ID, name, calculated_quantity, is_default
+- **Database**: Query `sp_calculate_auto_accessories`
+- **Python Function**: `EquipmentService.calculate_auto_accessories()`
+- **Frontend Call**: `POST /api/equipment/auto-accessories` (with equipment selections)
+
+---
+
+## 3. HIRE VALIDATION PROCEDURES
+
+### **3.1 Validate Hire Request**
+**Procedure**: `validate_hire_request(hire_data)`
+- **Inputs**: 
+  - Complete hire request object (customer, equipment, dates, site)
+- **Outputs**: 
+  - Validation result with success/failure and error details
+- **Database**: Multiple validation procedures called
+- **Python Function**: `HireService.validate_hire_request()`
+- **Validations**:
+  - Customer credit limit check
+  - Equipment availability validation
+  - Date range validation
+  - Site delivery capability check
+
+### **3.2 Check Equipment Availability**
+**Procedure**: `check_equipment_availability(equipment_list, date_range)`
+- **Inputs**: 
+  - `equipment_requests` (array of equipment with quantities/dates)
+- **Outputs**: 
+  - Availability status for each item, conflicts if any
+- **Database**: Stored procedure `sp_check_equipment_availability`
+- **Python Function**: `EquipmentService.check_availability()`
+
+### **3.3 Calculate Hire Pricing**
+**Procedure**: `calculate_hire_pricing(customer_id, equipment_list, duration)`
+- **Inputs**: 
+  - `customer_id`, `equipment_selections`, `hire_duration_days`
+- **Outputs**: 
+  - Pricing breakdown with subtotal, VAT, total, deposit
+- **Database**: Stored procedure `sp_calculate_hire_pricing`
+- **Python Function**: `PricingService.calculate_hire_pricing()`
+
+---
+
+## 4. HIRE CREATION PROCEDURES
+
+### **4.1 Create Hire Interaction**
+**Procedure**: `create_hire_interaction(hire_data)`
+- **Inputs**: 
+  - Complete validated hire request object
+- **Outputs**: 
+  - Created interaction with reference number and ID
+- **Database**: Stored procedure `sp_create_hire_interaction`
+- **Python Function**: `HireService.create_hire_interaction()`
+- **Process**:
+  1. Generate reference number
+  2. Create interaction record
+  3. Create equipment type bookings (Phase 1)
+  4. Create accessory records
+  5. Create driver task
+  6. Return interaction details
+
+### **4.2 Generate Reference Number**
+**Procedure**: `generate_reference_number(interaction_type)`
+- **Inputs**: 
+  - `interaction_type` (string: 'hire')
+- **Outputs**: 
+  - Unique reference number (HR250630001)
+- **Database**: Stored procedure `sp_generate_reference_number`
+- **Python Function**: `ReferenceService.generate_reference()`
+
+### **4.3 Create Driver Task**
+**Procedure**: `create_driver_task(interaction_id, delivery_details)`
+- **Inputs**: 
+  - `interaction_id`, `delivery_date`, `delivery_time`, `site_info`
+- **Outputs**: 
+  - Created driver task ID
+- **Database**: Stored procedure `sp_create_driver_task`
+- **Python Function**: `TaskService.create_driver_task()`
+
+---
+
+## 5. HIRE DISPLAY PROCEDURES
+
+### **5.1 Get Hire Interaction Details**
+**Procedure**: `get_hire_interaction(interaction_id)`
+- **Inputs**: 
+  - `interaction_id` (integer)
+- **Outputs**: 
+  - Complete hire details with customer, equipment, accessories, tasks
+- **Database**: Stored procedure `sp_get_hire_interaction_details`
+- **Python Function**: `HireService.get_hire_details()`
+- **Frontend Call**: `GET /api/hires/{interaction_id}`
+
+### **5.2 Format Equipment & Accessories List**
+**Procedure**: `format_hire_equipment_list(interaction_id)`
+- **Inputs**: 
+  - `interaction_id` (integer)
+- **Outputs**: 
+  - Formatted list showing equipment/accessory pairs plus extras
+- **Database**: Query multiple tables with complex joins
+- **Python Function**: `HireService.format_equipment_display()`
+- **Process**:
+  1. Get equipment types and quantities
+  2. Calculate auto-accessories per equipment
+  3. Get actual accessories from database
+  4. Calculate extras (actual - auto)
+  5. Format display with pairing and overflow
+
+### **5.3 Get Hire List for Dashboard**
+**Procedure**: `get_hire_list(filters)`
+- **Inputs**: 
+  - `date_range`, `status_filter`, `customer_filter`, `search_term`
+- **Outputs**: 
+  - Hire list with summary information
+- **Database**: Stored procedure `sp_get_hire_list`
+- **Python Function**: `HireService.get_hire_list()`
+- **Frontend Call**: `GET /api/hires?status=pending&from_date=2025-06-01`
+
+---
+
+## 6. EQUIPMENT ALLOCATION PROCEDURES
+
+### **6.1 Get Generic Bookings for Allocation**
+**Procedure**: `get_bookings_for_allocation(interaction_id)`
+- **Inputs**: 
+  - `interaction_id` (integer)
+- **Outputs**: 
+  - Generic equipment bookings with available specific units
+- **Database**: Stored procedure `sp_get_bookings_for_allocation`
+- **Python Function**: `AllocationService.get_bookings_for_allocation()`
+
+### **6.2 Allocate Specific Equipment**
+**Procedure**: `allocate_specific_equipment(allocation_data)`
+- **Inputs**: 
+  - Array of {booking_id, equipment_id} mappings
+- **Outputs**: 
+  - Allocation results with success/failure per item
+- **Database**: Stored procedure `sp_allocate_specific_equipment`
+- **Python Function**: `AllocationService.allocate_equipment()`
+- **Process**:
+  1. Validate equipment availability
+  2. Create allocation records
+  3. Update booking status
+  4. Update driver task allocation flag
+
+### **6.3 Quality Control Sign-off**
+**Procedure**: `quality_control_signoff(allocation_ids[], employee_id)`
+- **Inputs**: 
+  - `allocation_ids` (array), `employee_id`, `notes`
+- **Outputs**: 
+  - QC results for each allocation
+- **Database**: Stored procedure `sp_quality_control_signoff`
+- **Python Function**: `QualityService.signoff_equipment()`
+
+---
+
+## 7. PYTHON SERVICE ARCHITECTURE
+
+### **7.1 Service Classes**
+```python
+# Core service classes handling business logic
+
+class CustomerService:
+    - get_customer_list()
+    - get_customer_contacts()
+    - get_customer_sites()
+    - validate_customer_credit()
+
+class EquipmentService:
+    - get_equipment_types()
+    - get_individual_equipment()
+    - get_accessories()
+    - calculate_auto_accessories()
+    - check_availability()
+
+class HireService:
+    - validate_hire_request()
+    - create_hire_interaction()
+    - get_hire_details()
+    - format_equipment_display()
+    - get_hire_list()
+
+class AllocationService:
+    - get_bookings_for_allocation()
+    - allocate_equipment()
+    - get_allocation_status()
+
+class TaskService:
+    - create_driver_task()
+    - get_driver_tasks()
+    - update_task_status()
+
+class PricingService:
+    - calculate_hire_pricing()
+    - get_customer_rates()
+    - apply_discounts()
+
+class ReferenceService:
+    - generate_reference()
+    - validate_reference()
+
+class QualityService:
+    - signoff_equipment()
+    - get_qc_status()
+    - record_equipment_condition()
+```
+
+### **7.2 Error Handling & Validation**
+```python
+# All services implement consistent error handling
+
+class ValidationError(Exception):
+    - error_code: str
+    - error_message: str
+    - field_errors: dict
+
+class BusinessRuleError(Exception):
+    - rule_name: str
+    - violation_details: str
+
+class DatabaseError(Exception):
+    - procedure_name: str
+    - sql_error: str
+```
+
+### **7.3 API Response Format**
+```python
+# Standardized API responses
+
+{
+    "success": boolean,
+    "data": object/array,
+    "errors": [
+        {
+            "code": "VALIDATION_ERROR",
+            "message": "Customer credit limit exceeded",
+            "field": "customer_id"
+        }
+    ],
+    "metadata": {
+        "total_records": int,
+        "page": int,
+        "execution_time": float
+    }
+}
+```
+
+---
+
+## 8. DATABASE STORED PROCEDURES SPECIFICATION
+
+### **8.1 Naming Convention**
+- **Queries**: `sp_get_*` (SELECT operations)
+- **Commands**: `sp_create_*`, `sp_update_*`, `sp_delete_*`
+- **Validations**: `sp_validate_*`
+- **Calculations**: `sp_calculate_*`
+
+### **8.2 Standard Parameters**
+- All procedures return status codes
+- Error handling with TRY/CATCH blocks
+- Consistent parameter naming
+- Output parameters for result data
+
+### **8.3 Transaction Management**
+- Multi-step operations wrapped in transactions
+- Rollback on any failure
+- Audit trail logging for all changes
+
+---
+
+## 9. INTEGRATION POINTS
+
+### **9.1 Frontend API Endpoints**
+```
+# Equipment hire workflow endpoints
+GET    /api/customers                     # Customer list
+GET    /api/customers/{id}/contacts       # Customer contacts
+GET    /api/customers/{id}/sites          # Customer sites
+GET    /api/equipment/types               # Equipment types
+GET    /api/equipment/individual          # Individual equipment
+POST   /api/equipment/accessories         # Get accessories for equipment
+POST   /api/equipment/auto-accessories    # Calculate auto accessories
+POST   /api/hires/validate                # Validate hire request
+POST   /api/hires                         # Create new hire
+GET    /api/hires/{id}                    # Get hire details
+GET    /api/hires                         # List hires
+POST   /api/allocations                   # Allocate equipment
+POST   /api/quality-control               # QC sign-off
+```
+
+### **9.2 Database Connection Management**
+- Connection pooling for performance
+- Prepared statements for security
+- Automatic retry logic for transient failures
+- Connection monitoring and health checks
+
+### **9.3 Logging & Monitoring**
+- All API calls logged with request/response
+- Database procedure execution times tracked
+- Error logging with stack traces
+- Performance metrics collection
+
+---
+
+## SUCCESS CRITERIA
+
+### **Separation of Concerns**
+✅ Frontend handles only UI/UX
+✅ Python handles all business logic and validation  
+✅ Database handles data integrity and complex queries
+
+### **Data Flow**
+✅ Frontend never accesses database directly
+✅ All data flows through Python services
+✅ Stored procedures encapsulate database logic
+
+### **Error Handling**
+✅ Comprehensive validation in Python layer
+✅ Consistent error response format
+✅ Proper error propagation from database to frontend
+
+### **Performance**
+✅ Efficient stored procedures for complex operations
+✅ Minimal data transfer between layers
+✅ Proper indexing and query optimization

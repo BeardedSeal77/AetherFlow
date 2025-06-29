@@ -1,0 +1,288 @@
+# EQUIPMENT HIRE PROCESS DOCUMENTATION
+
+## SCENARIO
+"John Guy from ABC Construction wants to hire 2 rammers and plate compactor, delivery to Sandton site tomorrow at 9 AM"
+
+---
+
+## PROCESS FLOW
+
+### 1. CUSTOMER CONTACT
+- Customer calls with equipment hire request
+- Hire controller answers and captures request details
+
+### 2. FRONTEND DATA CAPTURE
+
+#### Customer Selection
+- Customer List Box: Searchable dropdown of all active customers
+- Selection: Hire controller searches and selects "ABC Construction"
+- Result: Customer ID captured, contact and site lists filtered
+
+#### Contact Selection
+- Contact List Box: Searchable dropdown filtered by selected customer
+- Selection: Choose "John Guy - Site Manager"
+- Result: Contact ID captured for communication
+
+#### Site Selection
+- Site List Box: Searchable dropdown filtered by selected customer
+- Selection: Choose "ABC-SAND - Sandton Office Development"
+- Result: Delivery address and site contact captured
+
+#### Equipment Selection
+#### Equipment Mode Toggle
+- Button: "Generic Equipment" / "Specific Equipment" toggle above equipment list
+- Generic Mode (Default): Shows equipment types (RAMMER-4S, PLATE-SM)
+- Specific Mode: Shows individual units (R1001, R1002, P1001)
+
+#### Equipment List Box
+Generic Mode: Searchable list of equipment types
+- Display: "4 Stroke Rammer (RAMMER-4S)"
+- Selection: Adds to equipment list with quantity 1
+
+Specific Mode: Searchable list of available individual equipment
+- Display: "R1001 - 4 Stroke Rammer (Excellent)"
+- Selection: Adds to equipment list with quantity 1 (max)
+
+#### Accessories Selection
+#### Accessory List Box
+- Filtered Display: Shows accessories relevant to selected equipment
+- Categories:
+-- Default Accessories: Auto-added when equipment selected
+-- Generic Accessories: Available for all equipment (petrol, oil)
+-- Equipment-Specific: Accessories for selected equipment types
+
+#### Auto-Added Defaults
+- Rammer Selected: Automatically adds "2L Petrol" and "Safety Helmet"
+- Generator Selected: Automatically adds "5L Petrol" and "Extension Cord"
+- All Equipment: Automatically adds "Safety Helmet"
+
+#### Equipment & Accessories List
+#### Combined List Display
+- Single List: Shows all selected equipment and accessories in one unified list
+- Equipment Format:
+-- Generic mode: "🔧 4 Stroke Rammer (RAMMER-4S) - Qty: 2"
+-- Specific mode: "🔧 R1001 - 4 Stroke Rammer - Qty: 1"
+
+- Accessory Format: "📦 Petrol - Qty: 7L" (2L default + 5L added) (petrol gets added in 5l increments)
+- Visual Distinction: Icons or colors to differentiate equipment from accessories
+
+#### Quantity Controls
+- Equipment:
+-- Generic mode: Editable quantity field (1-99)
+-- Specific mode: Fixed quantity of 1 per unit
+
+- Accessories:
+-- Consumables: Editable in relevant increments (petrol: 5L, oil: 1L)
+-- Non-Consumables: Usually quantity of 1
+
+- Item Management
+-- Remove Option: X button to remove items
+-- Default Protection: Cannot remove default accessories (grayed out X)
+-- list ordered with equipment & accessories pairs (if user adds more petrol, it goes by itself at the bottom of the list, when this gets added to the database, it only adds the sum of petrol)
+
+#### Date & Time Information
+- Delivery Date: Date picker (tomorrow = default)
+- Delivery Time: Time picker (9:00 AM)
+- Hire Start Date: Usually same as delivery date
+- Estimated Hire End: Optional field for planning
+
+#### Additional Information
+- Special Instructions: Text area for delivery notes
+- Contact Method: Dropdown (Phone, Email, WhatsApp)
+- Priority: Dropdown (Standard, Urgent)
+
+### 3. SYSTEM PROCESSING
+
+#### Interaction Creation
+```sql
+-- Create hire interaction
+INSERT INTO interactions.interactions (
+    customer_id, contact_id, employee_id, interaction_type,
+    reference_number, contact_method, notes
+) VALUES (
+    1000, 1000, 2, 'hire', 'HR250629001', 'phone',
+    'Delivery to Sandton site at 9 AM'
+);
+```
+
+#### Phase 1: Generic Equipment Booking
+```sql
+-- Book generic equipment types
+INSERT INTO interactions.interaction_equipment_types (
+    interaction_id, equipment_type_id, quantity, hire_start_date
+) VALUES 
+(1, 1, 2, '2025-06-30'), -- 2x 4-Stroke Rammers
+(1, 3, 1, '2025-06-30'); -- 1x Small Plate Compactor
+```
+
+#### Accessories Booking
+```sql
+-- Add accessories (generic accessories or linked to equipment types)
+INSERT INTO interactions.interaction_accessories (
+    interaction_id, accessory_id, quantity, accessory_type
+) VALUES
+(1, 1, 14.0, 'default'), -- 14L Petrol (2L per rammer + 2L for plate + extra 8L)
+(1, 4, 3, 'default'),    -- 3x Safety Helmets
+(1, 5, 2, 'optional');   -- 2x Extra Cutting Discs
+```
+
+### 4. DRIVER TASK CREATION
+
+#### Driver Task Generation
+```sql
+-- Create driver delivery task
+INSERT INTO tasks.drivers_taskboard (
+    interaction_id, task_type, priority, customer_name,
+    contact_name, contact_phone, contact_whatsapp,
+    site_address, scheduled_date, scheduled_time,
+    equipment_allocated, created_by
+) VALUES (
+    1, 'delivery', 'medium', 'ABC Construction',
+    'John Guy', '0821234567', '0821234567',
+    '123 Rivonia Road, Sandton, Gauteng, 2196',
+    '2025-06-30', '09:00:00', false, 2
+);
+```
+
+---
+
+## DATA STRUCTURE CREATED
+
+### Layer 1: Interaction Record
+- Reference: HR250629001
+- Type: hire
+- Customer: ABC Construction
+- Contact: John Guy
+- Status: pending
+
+### Layer 2: Equipment & Accessories
+
+#### Generic Equipment Booking
+| Equipment Type | Quantity | Status |
+|----------------|----------|---------|
+| 4-Stroke Rammer | 2 | booked |
+| Small Plate Compactor | 1 | booked |
+
+#### Accessories
+| Accessory | Quantity | Type |
+|-----------|----------|------|
+| Petrol | 14L | default |
+| Safety Helmet | 3 | default |
+| Cutting Discs | 2 | optional |
+
+### Layer 3: Driver Task
+- Task Type: delivery
+- Status: backlog (unassigned)
+- Scheduled: 2025-06-30 09:00
+- Equipment Allocated: false
+- Equipment Verified: false
+
+---
+
+## FRONTEND IMPLEMENTATION NOTES
+
+### User Experience Flow
+1. Quick Selection: Most recent customers appear at top of lists
+2. Smart Defaults: Previous selections remembered per customer
+3. Validation: Cannot proceed without customer, contact, site, equipment
+4. Visual Feedback: Selected items clearly displayed with quantities
+5. Easy Modification: Simple quantity adjustments and item removal
+
+### Equipment Mode Toggle Logic
+```javascript
+// Pseudo-code for equipment mode
+if (equipmentMode === 'generic') {
+    showEquipmentTypes(); // Phase 1 booking
+    allowQuantityEditing(1, 99);
+} else {
+    showIndividualEquipment(); // Direct Phase 2 allocation
+    fixQuantityTo(1);
+}
+```
+
+### Automatic Accessory Logic
+```javascript
+// Pseudo-code for auto-accessories
+onEquipmentSelected(equipmentType) {
+    defaultAccessories = getDefaultAccessories(equipmentType);
+    defaultAccessories.forEach(accessory => {
+        if (!alreadySelected(accessory)) {
+            addToAccessoryList(accessory, defaultQuantity);
+        }
+    });
+}
+```
+
+---
+
+## BUSINESS RULES
+
+### Equipment Selection Rules
+- Generic Mode: Unlimited quantities (within reason)
+- Specific Mode: One unit per selection (must select multiple items for multiple units)
+- Mixed Mode: Not allowed - must be all generic or all specific per interaction
+
+### Accessory Rules
+- Default Accessories: Cannot be removed, quantity can be increased
+- Optional Accessories: Can be added/removed freely
+- Consumable Increments: Petrol (5L), Oil (1L), Discs (1 each)
+
+### Date Rules
+- Delivery Date: Cannot be in the past
+- Hire Start: Usually same as delivery date
+- Same Day: Requires manager approval for urgent priority
+
+### Validation Rules
+- Must have at least one equipment item
+- Must have delivery date and time
+- Contact must belong to selected customer
+- Site must belong to selected customer
+- Zero quantities: Items with 0 quantity are automatically removed
+
+---
+
+## ALLOCATION WORKFLOW (Future Enhancement)
+
+### Phase 2: Equipment Allocation
+Trigger: Double-click on interaction or driver task
+
+Allocation Interface:
+- Shows generic bookings: "2x 4-Stroke Rammer (booked)"
+- Allows selection of specific units: R1001, R1002
+- Updates booking status to "allocated"
+- Creates specific equipment records
+- Enables quality control workflow
+
+Business Logic:
+```sql
+-- Convert generic booking to specific allocation
+UPDATE interaction_equipment_types 
+SET booking_status = 'allocated' 
+WHERE id = 1;
+
+INSERT INTO interaction_equipment (
+    interaction_id, equipment_id, equipment_type_booking_id
+) VALUES 
+(1, 1, 1), -- R1001 allocated to booking 1
+(1, 2, 1); -- R1002 allocated to booking 1
+```
+
+---
+
+## REFERENCE FORMAT
+HR250629001  #todays date
+- HR: Hire interaction prefix
+- 250630: Date (YYMMDD format)
+- 001: Daily sequence number
+
+---
+
+## SUCCESS CRITERIA
+1. ✅ Hire interaction created with unique reference
+2. ✅ Generic equipment booking recorded with quantities
+3. ✅ Accessories properly linked with defaults
+4. ✅ Driver task created in backlog status
+5. ✅ All customer/contact/site relationships maintained
+6. ✅ Ready for Phase 2 allocation workflow
+
+OUTCOME: Customer request captured completely, driver task queued for equipment allocation and delivery scheduling.
