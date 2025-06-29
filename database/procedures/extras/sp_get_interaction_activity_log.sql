@@ -91,4 +91,4 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-FUNCTION sp_get_interaction_activity_log IS 'Get chronological activity log for an interaction';
+COMMENT ON FUNCTION sp_get_interaction_activity_log IS 'Get chronological activity log for an interaction';
