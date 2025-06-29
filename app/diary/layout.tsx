@@ -44,6 +44,34 @@ export default function DiaryLayout({
       >
         Drivers Schedule
       </Link>
+      <Link
+        href="/diary/new-interaction"
+        className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+          pathname === '/diary/new-interaction'
+            ? 'bg-gold/30'
+            : 'hover:bg-overlay'
+        }`}
+        onClick={(e) => {
+          e.preventDefault()
+          router.push('/diary/new-interaction')
+        }}
+      >
+        New Interaction
+      </Link>
+      <Link
+        href="/diary/interactions"
+        className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+          pathname === '/diary/interactions'
+            ? 'bg-gold/30'
+            : 'hover:bg-overlay'
+        }`}
+        onClick={(e) => {
+          e.preventDefault()
+          router.push('/diary/interactions')
+        }}
+      >
+        View Interactions
+      </Link>
     </div>
   )
 

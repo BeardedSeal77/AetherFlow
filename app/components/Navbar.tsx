@@ -10,7 +10,7 @@ interface User {
   CustomerEmail: string
 }
 
-// 👇 Fixed navigation items with proper URLs and display names
+// Navigation items with proper URLs and display names
 const NAV_ITEMS = [
   { key: 'home', url: '/', displayName: 'Home' },
   { key: 'diary', url: '/diary', displayName: 'Diary' },
@@ -59,6 +59,7 @@ export default function Navbar() {
   return (
     <div className="sticky top-0 z-50">
       <div className="relative">
+        {/* Main Navbar */}
         <div className="bg-base rounded-b-lg relative z-20 shadow-md">
           <div className="flex justify-between items-center px-6 py-4">
             <div className="flex space-x-4">
@@ -97,6 +98,15 @@ export default function Navbar() {
               )}
             </div>
           </div>
+        </div>
+        
+        {/* Second Level Navbar Container */}
+        <div 
+          id="second-level-navbar-container"
+          className="bg-overlay/80 backdrop-blur-md border-t border-highlight/20 shadow-inner rounded-b-lg -mt-2 relative z-10"
+          style={{ display: 'none' }}
+        >
+          {/* Content will be injected here by layouts */}
         </div>
       </div>
     </div>

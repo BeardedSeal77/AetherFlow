@@ -1,9 +1,11 @@
+-- Fixed version of sp_get_hire_list
+-- The issue is likely in the date filtering logic
+
 SET search_path TO core, interactions, tasks, system, public;
 
--- Procedure to get hire list with filters
 CREATE OR REPLACE FUNCTION sp_get_hire_list(
-    p_date_from DATE DEFAULT CURRENT_DATE - INTERVAL '30 days',
-    p_date_to DATE DEFAULT CURRENT_DATE + INTERVAL '7 days',
+    p_date_from DATE DEFAULT NULL,  -- Changed: NULL instead of calculated default
+    p_date_to DATE DEFAULT NULL,    -- Changed: NULL instead of calculated default
     p_status_filter VARCHAR(50) DEFAULT NULL,
     p_customer_filter VARCHAR(255) DEFAULT NULL,
     p_search_term VARCHAR(255) DEFAULT NULL,
@@ -76,15 +78,18 @@ BEGIN
         LEFT JOIN tasks.drivers_taskboard dt ON i.id = dt.interaction_id
         WHERE 
             i.interaction_type = 'hire'
-            AND i.created_at::DATE BETWEEN p_date_from AND p_date_to
+            -- Fixed date filtering: only apply if parameters are provided
+            AND (p_date_from IS NULL OR i.created_at::DATE >= p_date_from)
+            AND (p_date_to IS NULL OR i.created_at::DATE <= p_date_to)
             AND (p_status_filter IS NULL OR i.status = p_status_filter)
             AND (p_customer_filter IS NULL OR c.customer_name ILIKE '%' || p_customer_filter || '%')
             AND (p_search_term IS NULL OR 
                  i.reference_number ILIKE '%' || p_search_term || '%' OR
                  c.customer_name ILIKE '%' || p_search_term || '%' OR
                  (ct.first_name || ' ' || ct.last_name) ILIKE '%' || p_search_term || '%')
-        GROUP BY i.id, i.reference_number, c.customer_name, ct.first_name, ct.last_name,
-                 i.status, dt.scheduled_date, dt.scheduled_time, dt.status, i.created_at
+        GROUP BY i.id, i.reference_number, i.status, c.customer_name,
+                 ct.first_name, ct.last_name, dt.scheduled_date, dt.scheduled_time,
+                 dt.status, i.created_at
         ORDER BY i.created_at DESC
         LIMIT p_limit OFFSET p_offset
     )
@@ -106,4 +111,4 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-COMMENT ON FUNCTION sp_get_hire_list IS 'Get paginated list of hire interactions with filters and summary data';
+COMMENT ON FUNCTION sp_get_hire_list IS 'Get paginated list of hire interactions with filters - FIXED version that handles NULL dates correctly';
