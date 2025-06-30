@@ -21,6 +21,17 @@ interface Accessory {
   is_consumable: boolean
 }
 
+interface AutoAccessory {
+  accessory_id: number
+  accessory_name: string
+  accessory_code: string
+  quantity: number
+  unit_of_measure: string
+  is_consumable: boolean
+  equipment_type_name: string
+  is_default: boolean
+}
+
 interface EquipmentSelection {
   equipment_type_id: number
   quantity: number
@@ -60,11 +71,13 @@ export default function EquipmentSelection({
   
   // Accessory state
   const [allAccessories, setAllAccessories] = useState<Accessory[]>([])
+  const [autoAccessories, setAutoAccessories] = useState<AutoAccessory[]>([])
   const [accessorySearch, setAccessorySearch] = useState('')
   const [showAccessoryDropdown, setShowAccessoryDropdown] = useState(false)
   
   // Loading states
   const [isLoading, setIsLoading] = useState(false)
+  const [isCalculatingAccessories, setIsCalculatingAccessories] = useState(false)
   
   // Refs
   const equipmentRef = useRef<HTMLDivElement>(null)
@@ -102,9 +115,6 @@ export default function EquipmentSelection({
 
   // Group accessories for display
   const standaloneAccessories = accessorySelections.filter(as => as.accessory_type === 'standalone')
-  const equipmentAccessories = accessorySelections.filter(as => 
-    as.accessory_type === 'equipment_default' || as.accessory_type === 'equipment_optional'
-  )
 
   // ============================================================================
   // EFFECTS
@@ -116,13 +126,21 @@ export default function EquipmentSelection({
     loadAllAccessories()
   }, [deliveryDate])
 
-  // When equipment selection changes, update accessories automatically
+  // When equipment selection changes, calculate auto-accessories
   useEffect(() => {
+    console.log('=== EQUIPMENT SELECTION CHANGED ===')
+    console.log('equipmentSelections:', equipmentSelections)
+    console.log('equipmentSelections.length:', equipmentSelections.length)
+    
     if (equipmentSelections.length > 0) {
-      loadEquipmentAccessories()
+      console.log('Calling calculateAutoAccessories...')
+      calculateAutoAccessories()
     } else {
+      console.log('No equipment selected, clearing auto-accessories')
+      setAutoAccessories([])
       // Keep only standalone accessories when no equipment selected
-      onAccessoriesChange(standaloneAccessories)
+      const newAccessories = accessorySelections.filter(as => as.accessory_type === 'standalone')
+      onAccessoriesChange(newAccessories)
     }
   }, [equipmentSelections])
 
@@ -150,58 +168,118 @@ export default function EquipmentSelection({
       setIsLoading(true)
       const response = await fetch(`/api/hire/equipment/types${deliveryDate ? `?delivery_date=${deliveryDate}` : ''}`)
       
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setEquipmentTypes(data.data)
-        }
+      if (!response.ok) {
+        throw new Error('Failed to load equipment types')
+      }
+      
+      const data = await response.json()
+      if (data.success) {
+        setEquipmentTypes(data.data)
+      } else {
+        throw new Error(data.error || 'Failed to load equipment types')
       }
     } catch (error) {
-      console.error('Failed to load equipment types:', error)
+      console.error('Error loading equipment types:', error)
     } finally {
       setIsLoading(false)
     }
   }
 
   const loadAllAccessories = async () => {
-    try {
-      const response = await fetch('/api/hire/accessories/all')
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setAllAccessories(data.data)
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load accessories:', error)
+  try {
+    console.log('=== LOADING ALL ACCESSORIES ===')
+    
+    const response = await fetch('/api/hire/equipment/accessories')
+    
+    console.log('All accessories response status:', response.status)
+    
+    if (!response.ok) {
+      throw new Error('Failed to load accessories')
     }
+    
+    const data = await response.json()
+    console.log('All accessories response:', data)
+    
+    if (data.success) {
+      console.log('Setting accessories:', data.data)
+      setAllAccessories(data.data)
+    } else {
+      throw new Error(data.error || 'Failed to load accessories')
+    }
+  } catch (error) {
+    console.error('Error loading accessories:', error)
   }
+}
 
-  const loadEquipmentAccessories = async () => {
+  const calculateAutoAccessories = async () => {
     try {
-      const response = await fetch('/api/hire/equipment/accessories-complete', {
+      setIsCalculatingAccessories(true)
+      
+      // Transform equipment selections for API - backend expects equipment_type_id, not id
+      const equipmentSelectionsForAPI = equipmentSelections.map(eq => ({
+        equipment_type_id: eq.equipment_type_id, // Use the correct field name
+        quantity: eq.quantity || 1 // Default quantity if missing
+      }))
+
+      // Add validation
+      const validSelections = equipmentSelectionsForAPI.filter(eq => 
+        eq.equipment_type_id && eq.quantity > 0
+      )
+
+      if (validSelections.length === 0) {
+        console.log('No valid equipment selections to process')
+        setAutoAccessories([])
+        return
+      }
+
+      console.log('Sending to auto-accessories API:', validSelections)
+
+      const response = await fetch('/api/hire/equipment/auto-accessories', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          equipment_selections: equipmentSelections.map(sel => ({
-            equipment_type_id: sel.equipment_type_id,
-            quantity: sel.quantity
-          }))
-        })
+          equipment_selections: validSelections
+        }),
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        if (result.success) {
-          // Combine equipment accessories with existing standalone accessories
-          const equipmentAccessories = result.data
-          const allAccessories = [...equipmentAccessories, ...standaloneAccessories]
-          onAccessoriesChange(allAccessories)
-        }
+      console.log('Auto-accessories response status:', response.status)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Auto-accessories API error:', errorText)
+        throw new Error(`API returned ${response.status}: ${errorText}`)
+      }
+
+      const data = await response.json()
+      console.log('Auto-accessories response data:', data)
+      
+      if (data.success) {
+        setAutoAccessories(data.data || [])
+        
+        // Convert auto-accessories to accessory selections and merge with standalone
+        const autoAccessorySelections: AccessorySelection[] = (data.data || []).map((auto: AutoAccessory) => ({
+          accessory_id: auto.accessory_id,
+          quantity: auto.quantity,
+          accessory_type: 'equipment_default',
+          accessory_name: auto.accessory_name,
+          unit_of_measure: auto.unit_of_measure,
+          is_consumable: auto.is_consumable
+        }))
+        
+        // Combine with existing standalone accessories
+        const combinedAccessories = [...autoAccessorySelections, ...standaloneAccessories]
+        onAccessoriesChange(combinedAccessories)
+      } else {
+        throw new Error(data.error || 'Failed to calculate auto-accessories')
       }
     } catch (error) {
-      console.error('Error loading equipment accessories:', error)
+      console.error('Error calculating auto-accessories:', error)
+      // Don't throw the error, just log it and continue
+      setAutoAccessories([])
+    } finally {
+      setIsCalculatingAccessories(false)
     }
   }
 
@@ -210,36 +288,39 @@ export default function EquipmentSelection({
   // ============================================================================
 
   const addEquipmentType = (equipment: EquipmentType) => {
-    // Check if already selected
-    if (equipmentSelections.some(sel => sel.equipment_type_id === equipment.equipment_type_id)) {
-      return
-    }
-
-    const newSelection: EquipmentSelection = {
-      equipment_type_id: equipment.equipment_type_id,
-      quantity: 1,
-      type_name: equipment.type_name,
-      type_code: equipment.type_code
+    const existing = equipmentSelections.find(e => e.equipment_type_id === equipment.equipment_type_id)
+    
+    if (existing) {
+      // Increase quantity if already selected
+      updateEquipmentQuantity(equipment.equipment_type_id, existing.quantity + 1)
+    } else {
+      // Add new equipment
+      const newSelection: EquipmentSelection = {
+        equipment_type_id: equipment.equipment_type_id,
+        quantity: 1,
+        type_name: equipment.type_name,
+        type_code: equipment.type_code
+      }
+      
+      const updatedSelections = [...equipmentSelections, newSelection]
+      onEquipmentChange(updatedSelections)
     }
     
-    onEquipmentChange([...equipmentSelections, newSelection])
     setEquipmentSearch('')
     setShowEquipmentDropdown(false)
   }
 
   const updateEquipmentQuantity = (equipmentTypeId: number, newQuantity: number) => {
     if (newQuantity <= 0) {
-      // Remove equipment
-      onEquipmentChange(equipmentSelections.filter(sel => sel.equipment_type_id !== equipmentTypeId))
+      // Remove equipment if quantity is 0
+      const updatedSelections = equipmentSelections.filter(e => e.equipment_type_id !== equipmentTypeId)
+      onEquipmentChange(updatedSelections)
     } else {
       // Update quantity
-      onEquipmentChange(
-        equipmentSelections.map(sel =>
-          sel.equipment_type_id === equipmentTypeId
-            ? { ...sel, quantity: newQuantity }
-            : sel
-        )
+      const updatedSelections = equipmentSelections.map(e =>
+        e.equipment_type_id === equipmentTypeId ? { ...e, quantity: newQuantity } : e
       )
+      onEquipmentChange(updatedSelections)
     }
   }
 
@@ -248,7 +329,7 @@ export default function EquipmentSelection({
   // ============================================================================
 
   const addStandaloneAccessory = (accessory: Accessory) => {
-    const newAccessory: AccessorySelection = {
+    const newAccessorySelection: AccessorySelection = {
       accessory_id: accessory.accessory_id,
       quantity: 1,
       accessory_type: 'standalone',
@@ -257,45 +338,58 @@ export default function EquipmentSelection({
       is_consumable: accessory.is_consumable
     }
     
-    onAccessoriesChange([...accessorySelections, newAccessory])
+    const updatedAccessories = [...accessorySelections, newAccessorySelection]
+    onAccessoriesChange(updatedAccessories)
+    
     setAccessorySearch('')
     setShowAccessoryDropdown(false)
   }
 
-  const updateAccessoryQuantity = (accessoryId: number, newQuantity: number) => {
+  const updateStandaloneAccessoryQuantity = (accessoryId: number, newQuantity: number) => {
     if (newQuantity <= 0) {
-      // Remove accessory
-      onAccessoriesChange(accessorySelections.filter(acc => acc.accessory_id !== accessoryId))
+      // Remove accessory if quantity is 0
+      const updatedAccessories = accessorySelections.filter(a => 
+        !(a.accessory_id === accessoryId && a.accessory_type === 'standalone')
+      )
+      onAccessoriesChange(updatedAccessories)
     } else {
       // Update quantity
-      onAccessoriesChange(
-        accessorySelections.map(acc =>
-          acc.accessory_id === accessoryId
-            ? { ...acc, quantity: newQuantity }
-            : acc
-        )
+      const updatedAccessories = accessorySelections.map(a =>
+        a.accessory_id === accessoryId && a.accessory_type === 'standalone' 
+          ? { ...a, quantity: newQuantity } 
+          : a
       )
+      onAccessoriesChange(updatedAccessories)
     }
+  }
+
+  const updateAutoAccessoryQuantity = (accessoryId: number, newQuantity: number) => {
+    // Update in auto-accessories state
+    const updatedAutoAccessories = autoAccessories.map(a =>
+      a.accessory_id === accessoryId ? { ...a, quantity: Math.max(0, newQuantity) } : a
+    )
+    setAutoAccessories(updatedAutoAccessories)
+    
+    // Update in accessory selections (keep standalone, update auto)
+    const autoAccessorySelections: AccessorySelection[] = updatedAutoAccessories.map(auto => ({
+      accessory_id: auto.accessory_id,
+      quantity: auto.quantity,
+      accessory_type: 'equipment_default',
+      accessory_name: auto.accessory_name,
+      unit_of_measure: auto.unit_of_measure,
+      is_consumable: auto.is_consumable
+    }))
+    
+    const combinedAccessories = [...autoAccessorySelections, ...standaloneAccessories]
+    onAccessoriesChange(combinedAccessories)
   }
 
   // ============================================================================
   // RENDER
   // ============================================================================
 
-  if (isLoading) {
-    return (
-      <div className="bg-surface p-6 rounded-lg">
-        <div className="flex justify-center items-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gold"></div>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="bg-surface p-6 rounded-lg">
-      <h2 className="text-lg font-medium text-text mb-6">Equipment & Accessories Selection</h2>
-
+    <div className="space-y-6">
       {/* Equipment Search */}
       <div className="mb-6">
         <h3 className="font-medium text-text mb-3">Add Equipment</h3>
@@ -307,14 +401,17 @@ export default function EquipmentSelection({
             onFocus={() => setShowEquipmentDropdown(true)}
             placeholder="Search equipment types..."
             className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
+            disabled={isLoading}
           />
           
           {showEquipmentDropdown && (
             <div className="absolute z-50 w-full mt-1 bg-surface border border-highlight-med rounded shadow-lg max-h-60 overflow-y-auto">
-              {filteredEquipment.length > 0 ? (
-                filteredEquipment.map(equipment => (
+              {isLoading ? (
+                <div className="p-3 text-subtle">Loading equipment...</div>
+              ) : filteredEquipment.length > 0 ? (
+                filteredEquipment.map((equipment, index) => (
                   <div
-                    key={equipment.equipment_type_id}
+                    key={`equipment-${equipment.equipment_type_id}-${index}`}
                     onClick={() => addEquipmentType(equipment)}
                     className="p-3 hover:bg-highlight-low cursor-pointer border-b border-highlight-low last:border-0"
                   >
@@ -350,7 +447,9 @@ export default function EquipmentSelection({
       {/* Accessory Search */}
       <div className="mb-6">
         <h3 className="font-medium text-text mb-3">Add Accessories</h3>
-        <div className="text-sm text-subtle mb-2">Search all accessories (equipment-specific accessories are added automatically when you select equipment)</div>
+        <div className="text-sm text-subtle mb-2">
+          Search all accessories (equipment-specific accessories are added automatically when you select equipment)
+        </div>
         <div className="relative" ref={accessoryRef}>
           <input
             type="text"
@@ -380,6 +479,7 @@ export default function EquipmentSelection({
                           )}
                         </div>
                         <div className="text-sm text-subtle mt-1">{accessory.description}</div>
+                        <div className="text-xs text-subtle mt-1">Unit: {accessory.unit_of_measure}</div>
                       </div>
                     </div>
                   </div>
@@ -402,70 +502,79 @@ export default function EquipmentSelection({
         {equipmentSelections.length > 0 && (
           <div className="mb-6">
             <h4 className="text-sm font-medium text-text mb-3">Equipment</h4>
-            <div className="space-y-2">
-              {equipmentSelections.map(selection => (
-                <div key={selection.equipment_type_id} className="flex items-center justify-between bg-highlight-low p-3 rounded">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">🔧</span>
-                    <div>
-                      <span className="font-medium text-text">{selection.type_name}</span>
-                      <span className="text-sm text-subtle ml-2">({selection.type_code})</span>
+            <div className="space-y-4">
+              {equipmentSelections.map((selection, index) => (
+                <div key={`equipment-selection-${selection.equipment_type_id}-${index}`} className="bg-highlight-low p-4 rounded">
+                  {/* Equipment Header */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">🔧</span>
+                      <div>
+                        <span className="font-medium text-text">{selection.type_name}</span>
+                        <span className="text-sm text-subtle ml-2">({selection.type_code})</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm text-subtle">Qty:</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={selection.quantity}
+                        onChange={(e) => updateEquipmentQuantity(selection.equipment_type_id, Number(e.target.value))}
+                        className="w-16 p-1 bg-overlay border border-highlight-med rounded text-center text-text"
+                      />
+                      <button
+                        onClick={() => updateEquipmentQuantity(selection.equipment_type_id, 0)}
+                        className="text-red hover:text-love"
+                      >
+                        ✕
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <label className="text-sm text-subtle">Qty:</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="99"
-                      value={selection.quantity}
-                      onChange={(e) => updateEquipmentQuantity(selection.equipment_type_id, Number(e.target.value))}
-                      className="w-16 p-1 bg-overlay border border-highlight-med rounded text-center text-text"
-                    />
-                    <button
-                      onClick={() => updateEquipmentQuantity(selection.equipment_type_id, 0)}
-                      className="text-red hover:text-love"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Equipment Accessories (Auto-added) */}
-        {equipmentAccessories.length > 0 && (
-          <div className="mb-6">
-            <h4 className="text-sm font-medium text-text mb-3">Equipment Accessories (Auto-added)</h4>
-            <div className="space-y-2">
-              {equipmentAccessories.map(selection => (
-                <div key={`${selection.accessory_id}-${selection.equipment_type_id}`} className="flex items-center justify-between bg-blue/10 p-3 rounded">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">📦</span>
-                    <div>
-                      <span className="font-medium text-text">{selection.accessory_name}</span>
-                      {selection.is_consumable && (
-                        <span className="text-xs bg-yellow/20 text-yellow px-2 py-1 rounded ml-2">CONSUMABLE</span>
-                      )}
-                      {selection.accessory_type === 'equipment_default' && (
-                        <span className="text-xs bg-green/20 text-green px-2 py-1 rounded ml-2">DEFAULT</span>
-                      )}
+                  
+                  {/* Auto-accessories for this equipment */}
+                  {autoAccessories.length > 0 && (
+                    <div className="ml-6 border-l-2 border-blue/30 pl-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-medium text-text">Auto-included accessories:</span>
+                        {isCalculatingAccessories && (
+                          <span className="text-xs text-subtle">(calculating...)</span>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        {autoAccessories.map(accessory => (
+                          <div key={`auto-${accessory.accessory_id}-${selection.equipment_type_id}`} className="flex items-center justify-between py-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-text">{accessory.accessory_name}</span>
+                              {accessory.is_consumable && (
+                                <span className="text-xs bg-yellow/20 text-yellow px-1 py-0.5 rounded">CONSUMABLE</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={() => updateAutoAccessoryQuantity(accessory.accessory_id, accessory.quantity - (accessory.is_consumable ? 0.5 : 1))}
+                                className="w-6 h-6 rounded bg-surface border border-highlight-med flex items-center justify-center hover:bg-highlight-low text-text"
+                                disabled={accessory.quantity <= 0}
+                              >
+                                −
+                              </button>
+                              <span className="w-12 text-center text-sm font-medium text-text">
+                                {accessory.quantity}
+                              </span>
+                              <button 
+                                onClick={() => updateAutoAccessoryQuantity(accessory.accessory_id, accessory.quantity + (accessory.is_consumable ? 0.5 : 1))}
+                                className="w-6 h-6 rounded bg-surface border border-highlight-med flex items-center justify-center hover:bg-highlight-low text-text"
+                              >
+                                +
+                              </button>
+                              <span className="text-xs text-subtle ml-2 w-16">{accessory.unit_of_measure}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <label className="text-sm text-subtle">Qty:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step={selection.is_consumable ? "0.1" : "1"}
-                      value={selection.quantity}
-                      onChange={(e) => updateAccessoryQuantity(selection.accessory_id, Number(e.target.value))}
-                      className="w-20 p-1 bg-overlay border border-highlight-med rounded text-center text-text"
-                    />
-                    <span className="text-sm text-subtle">{selection.unit_of_measure || 'item(s)'}</span>
-                  </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -475,37 +584,31 @@ export default function EquipmentSelection({
         {/* Standalone Accessories */}
         {standaloneAccessories.length > 0 && (
           <div className="mb-6">
-            <h4 className="text-sm font-medium text-text mb-3">Standalone Accessories</h4>
-            <div className="space-y-2">
+            <h4 className="text-sm font-medium text-text mb-3">Additional Accessories</h4>
+            <div className="bg-orange/10 p-3 rounded space-y-2">
               {standaloneAccessories.map(selection => (
-                <div key={selection.accessory_id} className="flex items-center justify-between bg-purple/10 p-3 rounded">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">📦</span>
-                    <div>
-                      <span className="font-medium text-text">{selection.accessory_name}</span>
-                      {selection.is_consumable && (
-                        <span className="text-xs bg-yellow/20 text-yellow px-2 py-1 rounded ml-2">CONSUMABLE</span>
-                      )}
-                      <span className="text-xs bg-purple/20 text-purple px-2 py-1 rounded ml-2">STANDALONE</span>
-                    </div>
+                <div key={selection.accessory_id} className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-text">{selection.accessory_name}</span>
+                    {selection.is_consumable && (
+                      <span className="text-xs bg-yellow/20 text-yellow px-2 py-1 rounded">CONSUMABLE</span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <label className="text-sm text-subtle">Qty:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step={selection.is_consumable ? "0.1" : "1"}
-                      value={selection.quantity}
-                      onChange={(e) => updateAccessoryQuantity(selection.accessory_id, Number(e.target.value))}
-                      className="w-20 p-1 bg-overlay border border-highlight-med rounded text-center text-text"
-                    />
-                    <span className="text-sm text-subtle">{selection.unit_of_measure || 'item(s)'}</span>
-                    <button
-                      onClick={() => updateAccessoryQuantity(selection.accessory_id, 0)}
-                      className="text-red hover:text-love"
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => updateStandaloneAccessoryQuantity(selection.accessory_id, selection.quantity - (selection.is_consumable ? 0.5 : 1))}
+                      className="w-6 h-6 rounded bg-surface border border-highlight-med flex items-center justify-center hover:bg-highlight-low text-text"
                     >
-                      ✕
+                      −
                     </button>
+                    <span className="w-8 text-center text-sm font-medium text-text">{selection.quantity}</span>
+                    <button 
+                      onClick={() => updateStandaloneAccessoryQuantity(selection.accessory_id, selection.quantity + (selection.is_consumable ? 0.5 : 1))}
+                      className="w-6 h-6 rounded bg-surface border border-highlight-med flex items-center justify-center hover:bg-highlight-low text-text"
+                    >
+                      +
+                    </button>
+                    <span className="text-xs text-subtle ml-2 w-16">{selection.unit_of_measure}</span>
                   </div>
                 </div>
               ))}
@@ -513,29 +616,33 @@ export default function EquipmentSelection({
           </div>
         )}
 
-        {/* Summary Stats */}
-        {(equipmentSelections.length > 0 || accessorySelections.length > 0) && (
-          <div className="border-t border-highlight-med pt-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div>
-                <span className="text-subtle">Equipment Items:</span>
-                <div className="text-text font-medium">{equipmentSelections.length}</div>
-              </div>
-              <div>
-                <span className="text-subtle">Equipment Accessories:</span>
-                <div className="text-text font-medium">{equipmentAccessories.length}</div>
-              </div>
-              <div>
-                <span className="text-subtle">Standalone Accessories:</span>
-                <div className="text-text font-medium">{standaloneAccessories.length}</div>
-              </div>
-            </div>
+        {/* Empty State */}
+        {equipmentSelections.length === 0 && standaloneAccessories.length === 0 && (
+          <div className="text-center py-8 text-subtle">
+            <div className="text-4xl mb-2">🔧</div>
+            <p>No equipment or accessories selected yet.</p>
+            <p className="text-sm">Start by selecting equipment from the search above.</p>
           </div>
         )}
 
-        {equipmentSelections.length === 0 && accessorySelections.length === 0 && (
-          <div className="text-center text-subtle py-8">
-            No equipment or accessories selected yet
+        {/* Summary Stats */}
+        {(equipmentSelections.length > 0 || standaloneAccessories.length > 0) && (
+          <div className="border-t border-highlight-med pt-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-subtle">Equipment Items:</span>
+                <span className="font-medium text-text ml-2">
+                  {equipmentSelections.reduce((sum, eq) => sum + eq.quantity, 0)}
+                </span>
+              </div>
+              <div>
+                <span className="text-subtle">Accessory Items:</span>
+                <span className="font-medium text-text ml-2">
+                  {(autoAccessories.reduce((sum, acc) => sum + acc.quantity, 0) + 
+                    standaloneAccessories.reduce((sum, acc) => sum + acc.quantity, 0)).toFixed(1)}
+                </span>
+              </div>
+            </div>
           </div>
         )}
       </div>

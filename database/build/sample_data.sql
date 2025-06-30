@@ -1,5 +1,5 @@
 -- =============================================================================
--- UPDATED SAMPLE DATA FOR EQUIPMENT & ACCESSORIES - REWORKED STRUCTURE
+-- COMPLETE SAMPLE DATA FOR EQUIPMENT & ACCESSORIES - WITH BREAKERS & CHISELS
 -- =============================================================================
 
 -- System employee (must be first for foreign key references)
@@ -44,7 +44,9 @@ INSERT INTO core.employees (id, employee_code, name, surname, role, email, phone
 (5, 'DRV002', 'Chris', 'Wilson', 'driver', 'chris@company.com', '0116666666', '0786666666', '2023-03-15', 1),
 (6, 'MGR001', 'Lisa', 'Davis', 'manager', 'lisa@company.com', '0117777777', '0787777777', '2022-12-01', 1);
 
--- Sample equipment types (no more default_accessories column)
+-- =============================================================================
+-- EQUIPMENT TYPES (including breakers)
+-- =============================================================================
 INSERT INTO core.equipment_types (type_code, type_name, description, specifications, created_by) VALUES
 ('RAMMER-4S', '4 Stroke Rammer', 'Heavy duty 4-stroke petrol rammer for soil compaction', 'Engine: 4-stroke, Weight: 85kg, Impact force: 18kN', 1),
 ('RAMMER-2S', '2 Stroke Rammer', 'Lightweight 2-stroke petrol rammer for general compaction', 'Engine: 2-stroke, Weight: 65kg, Impact force: 15kN', 1),
@@ -52,9 +54,13 @@ INSERT INTO core.equipment_types (type_code, type_name, description, specificati
 ('POKER-25', 'Concrete Poker 25mm', 'High frequency concrete vibrator poker', 'Diameter: 25mm, Frequency: 12000vpm, Length: 1.5m', 1),
 ('DRIVE-UNIT', 'Poker Drive Unit', 'Electric drive unit for concrete poker', 'Power: 2.2kW, Voltage: 240V, Weight: 35kg', 1),
 ('GRINDER-250', '250mm Angle Grinder', 'Heavy duty angle grinder for cutting and grinding', 'Disc size: 250mm, Power: 2.5kW, Weight: 6kg', 1),
-('GEN-2.5KVA', '2.5kVA Generator', 'Portable petrol generator for power tools', 'Output: 2.5kVA, Fuel: Petrol, Runtime: 8 hours', 1);
+('GEN-2.5KVA', '2.5kVA Generator', 'Portable petrol generator for power tools', 'Output: 2.5kVA, Fuel: Petrol, Runtime: 8 hours', 1),
+('BREAKER-HILTI', 'Hilti Breaker', 'Heavy duty electric demolition hammer for concrete breaking', 'Power: 1500W, Impact energy: 35J, Weight: 8.5kg', 1),
+('BREAKER-BOSCH', 'Bosch Breaker', 'Professional electric demolition hammer for heavy demolition', 'Power: 1700W, Impact energy: 45J, Weight: 9.2kg', 1);
 
--- Sample individual equipment units (unchanged)
+-- =============================================================================
+-- INDIVIDUAL EQUIPMENT UNITS
+-- =============================================================================
 INSERT INTO core.equipment (equipment_type_id, asset_code, serial_number, model, condition, status, created_by) VALUES
 -- Rammers (4-stroke)
 (1, 'R1001', 'WP1550-2023-001', 'Wacker WP1550', 'excellent', 'available', 1),
@@ -77,10 +83,17 @@ INSERT INTO core.equipment (equipment_type_id, asset_code, serial_number, model,
 (6, 'G1002', 'AG250-2024-002', 'Bosch AG250', 'good', 'available', 1),
 -- Generators
 (7, 'GEN001', 'EU25-2023-001', 'Honda EU25i', 'excellent', 'available', 1),
-(7, 'GEN002', 'EU25-2023-002', 'Honda EU25i', 'good', 'available', 1);
+(7, 'GEN002', 'EU25-2023-002', 'Honda EU25i', 'good', 'available', 1),
+-- Hilti Breakers
+(8, 'BH001', 'TE1000-2024-001', 'Hilti TE 1000-AVR', 'excellent', 'available', 1),
+(8, 'BH002', 'TE1000-2024-002', 'Hilti TE 1000-AVR', 'good', 'available', 1),
+(8, 'BH003', 'TE1000-2023-001', 'Hilti TE 1000-AVR', 'good', 'available', 1),
+-- Bosch Breakers
+(9, 'BB001', 'GSH16-2024-001', 'Bosch GSH 16-30', 'excellent', 'available', 1),
+(9, 'BB002', 'GSH16-2024-002', 'Bosch GSH 16-30', 'good', 'available', 1);
 
 -- =============================================================================
--- MASTER ACCESSORIES LIST (new approach)
+-- MASTER ACCESSORIES LIST (including chisels)
 -- =============================================================================
 INSERT INTO core.accessories (accessory_code, accessory_name, description, is_consumable, unit_of_measure, created_by) VALUES
 -- Fuels
@@ -103,12 +116,20 @@ INSERT INTO core.accessories (accessory_code, accessory_name, description, is_co
 ('DISC-250-CONC', '250mm Concrete Disc', 'Concrete cutting disc for 250mm grinder', true, 'item', 1),
 ('DISC-250-MET', '250mm Metal Disc', 'Metal cutting disc for 250mm grinder', true, 'item', 1),
 
--- Miscellaneous
+-- Breaker chisels (the requested accessories)
+('CHISEL-MOIL', 'Moil Point Chisel', 'Pointed moil chisel for breaking concrete and masonry', false, 'item', 1),
+('CHISEL-SPADE', 'Spade Chisel', 'Flat spade chisel for chipping and breaking', false, 'item', 1),
+('CHISEL-CONE', 'Cone Point Chisel', 'Cone-shaped chisel for precise breaking work', false, 'item', 1),
+('CHISEL-FLAT', 'Flat Chisel', 'Wide flat chisel for surface preparation and chipping', false, 'item', 1),
+
+-- Additional accessories
 ('FUNNEL', 'Fuel Funnel', 'Plastic funnel for fuel filling', false, 'item', 1),
-('RAG-PACK', 'Cleaning Rags', 'Pack of cleaning rags', true, 'pack', 1);
+('RAG-PACK', 'Cleaning Rags', 'Pack of cleaning rags', true, 'pack', 1),
+('CORD-BREAKER', 'Breaker Extension Cord', 'Heavy duty 15m extension cord for breakers', false, 'item', 1),
+('LUBRICANT', 'Chisel Lubricant', 'Special lubricant for breaker chisels', true, 'tube', 1);
 
 -- =============================================================================
--- EQUIPMENT TYPE -> ACCESSORIES RELATIONSHIPS (this replaces default_accessories column)
+-- EQUIPMENT-ACCESSORIES RELATIONSHIPS
 -- =============================================================================
 
 -- 4-Stroke Rammer (RAMMER-4S) default accessories
@@ -179,7 +200,45 @@ INSERT INTO core.equipment_accessories (equipment_type_id, accessory_id, accesso
 (7, (SELECT id FROM core.accessories WHERE accessory_code = 'OIL-4S'), 'optional', 1.0, 1),       -- 1 litre oil
 (7, (SELECT id FROM core.accessories WHERE accessory_code = 'CORD-10M'), 'optional', 1, 1);       -- Additional 10m cord
 
--- Sample customers, contacts, and sites (simplified but complete)
+-- =============================================================================
+-- HILTI BREAKER ACCESSORIES (the requested setup)
+-- =============================================================================
+INSERT INTO core.equipment_accessories (equipment_type_id, accessory_id, accessory_type, default_quantity, created_by) VALUES
+-- Default accessories (automatically included with default quantities)
+(8, (SELECT id FROM core.accessories WHERE accessory_code = 'CHISEL-MOIL'), 'default', 1, 1),     -- Moil = 1 (default)
+(8, (SELECT id FROM core.accessories WHERE accessory_code = 'CHISEL-SPADE'), 'default', 1, 1),    -- Spade = 1 (default)
+(8, (SELECT id FROM core.accessories WHERE accessory_code = 'HELMET'), 'default', 1, 1),           -- Safety helmet
+(8, (SELECT id FROM core.accessories WHERE accessory_code = 'GOGGLES'), 'default', 1, 1),          -- Safety goggles
+(8, (SELECT id FROM core.accessories WHERE accessory_code = 'GLOVES'), 'default', 1, 1),          -- Work gloves
+(8, (SELECT id FROM core.accessories WHERE accessory_code = 'CORD-BREAKER'), 'default', 1, 1),    -- Extension cord
+
+-- Optional accessories (start at quantity 0, user can adjust)
+(8, (SELECT id FROM core.accessories WHERE accessory_code = 'CHISEL-CONE'), 'optional', 0, 1),    -- Cone = 0 (optional)
+(8, (SELECT id FROM core.accessories WHERE accessory_code = 'CHISEL-FLAT'), 'optional', 0, 1),    -- Flat = 0 (optional)
+(8, (SELECT id FROM core.accessories WHERE accessory_code = 'LUBRICANT'), 'optional', 1, 1);      -- Chisel lubricant
+
+-- =============================================================================
+-- BOSCH BREAKER ACCESSORIES (similar setup)
+-- =============================================================================
+INSERT INTO core.equipment_accessories (equipment_type_id, accessory_id, accessory_type, default_quantity, created_by) VALUES
+-- Default accessories
+(9, (SELECT id FROM core.accessories WHERE accessory_code = 'CHISEL-MOIL'), 'default', 1, 1),     -- Moil = 1 (default)
+(9, (SELECT id FROM core.accessories WHERE accessory_code = 'CHISEL-SPADE'), 'default', 1, 1),    -- Spade = 1 (default)
+(9, (SELECT id FROM core.accessories WHERE accessory_code = 'HELMET'), 'default', 1, 1),           -- Safety helmet
+(9, (SELECT id FROM core.accessories WHERE accessory_code = 'GOGGLES'), 'default', 1, 1),          -- Safety goggles
+(9, (SELECT id FROM core.accessories WHERE accessory_code = 'GLOVES'), 'default', 1, 1),          -- Work gloves
+(9, (SELECT id FROM core.accessories WHERE accessory_code = 'CORD-BREAKER'), 'default', 1, 1),    -- Extension cord
+
+-- Optional accessories
+(9, (SELECT id FROM core.accessories WHERE accessory_code = 'CHISEL-CONE'), 'optional', 0, 1),    -- Cone = 0 (optional)
+(9, (SELECT id FROM core.accessories WHERE accessory_code = 'CHISEL-FLAT'), 'optional', 0, 1),    -- Flat = 0 (optional)
+(9, (SELECT id FROM core.accessories WHERE accessory_code = 'LUBRICANT'), 'optional', 1, 1);      -- Chisel lubricant
+
+-- =============================================================================
+-- SAMPLE CUSTOMERS, CONTACTS, AND SITES
+-- =============================================================================
+
+-- Sample customers
 INSERT INTO core.customers (id, customer_code, customer_name, is_company, registration_number, vat_number, credit_limit, payment_terms, created_by) VALUES
 (1000, 'ABC001', 'ABC Construction', true, 'CK2023/123456/23', '4123456789', 50000.00, '30 days', 1),
 (1001, 'IND001', 'John Smith', false, NULL, NULL, 5000.00, '7 days', 1),
@@ -200,63 +259,49 @@ INSERT INTO core.sites (customer_id, site_code, site_name, site_type, address_li
 (1002, 'XYZ-WORKSHOP', 'XYZ Workshop', 'head_office', '321 Industrial Road', 'Germiston', 'Gauteng', '1401', 'Peter Builder', '0829876543', 1);
 
 -- =============================================================================
--- VERIFICATION QUERIES (to test the new structure)
+-- VERIFICATION QUERIES
 -- =============================================================================
 
--- Show all default accessories for 4-stroke rammer
--- SELECT * FROM core.v_equipment_default_accessories WHERE type_code = 'RAMMER-4S';
-
--- Show all accessories (default + optional) for generator
--- SELECT * FROM core.v_equipment_all_accessories WHERE type_code = 'GEN-2.5KVA';
-
--- Show which equipment types use petrol
--- SELECT DISTINCT et.type_code, et.type_name 
+-- Test Hilti Breaker setup
+-- SELECT 
+--     et.type_name,
+--     a.accessory_name,
+--     ea.accessory_type,
+--     ea.default_quantity,
+--     a.unit_of_measure
 -- FROM core.equipment_types et
--- JOIN core.equipment_accessories ea ON et.id = ea.equipment_type_id  
--- JOIN core.accessories a ON ea.accessory_id = a.id
--- WHERE a.accessory_code LIKE 'PETROL%';
+-- JOIN core.equipment_accessories ea ON et.id = ea.equipment_type_id
+-- JOIN core.accessories a ON ea.accessory_id = a.id  
+-- WHERE et.type_code = 'BREAKER-HILTI'
+-- ORDER BY ea.accessory_type, a.accessory_name;
+
+-- Test stored procedure with Hilti Breaker
+-- SELECT * FROM sp_calculate_auto_accessories('[{"equipment_type_id": 8, "quantity": 1}]');
+
+-- Show all equipment types and their IDs
+-- SELECT id, type_code, type_name FROM core.equipment_types ORDER BY id;
 
 -- =============================================================================
--- COMMENTS ON THE NEW APPROACH
+-- EXPECTED RESULT WHEN USER SELECTS HILTI BREAKER:
 -- =============================================================================
-
 /*
-KEY IMPROVEMENTS IN THIS NEW STRUCTURE:
+When a user selects "Hilti Breaker", they should see:
 
-1. ACCESSORIES ARE NOW UNIVERSAL
-   - accessories table is no longer tied to equipment_types
-   - Same accessory (like HELMET) can be used across multiple equipment types
-   - No duplication of common accessories
+🔧 Hilti Breaker (BREAKER-HILTI)                    Qty: [1] [✕]
+   Auto-included accessories:
+   Moil Point Chisel       [−] 1.0 [+] item        ← Default (starts at 1)
+   Spade Chisel           [−] 1.0 [+] item        ← Default (starts at 1)
+   Safety Helmet          [−] 1.0 [+] item        ← Default
+   Safety Goggles         [−] 1.0 [+] item        ← Default
+   Work Gloves            [−] 1.0 [+] item        ← Default
+   Breaker Extension Cord [−] 1.0 [+] item        ← Default
+   Cone Point Chisel      [−] 0.0 [+] item        ← Optional (starts at 0)
+   Flat Chisel            [−] 0.0 [+] item        ← Optional (starts at 0)
+   Chisel Lubricant       [−] 1.0 [+] tube        ← Optional
 
-2. FLEXIBLE RELATIONSHIP MANAGEMENT  
-   - core.equipment_accessories table manages the many-to-many relationship
-   - Each equipment type can have multiple accessories with different quantities
-   - Same accessory can have different default quantities for different equipment
-   - Example: PETROL-4S is 2L for rammers, 3L for plates, 5L for generators
-
-3. CONSISTENT NAMING AND CODING
-   - All accessories have unique codes (PETROL-4S, HELMET, CORD-20M)
-   - Proper unit of measure tracking (litres, items, pairs, etc.)
-   - Clear separation between consumable and non-consumable items
-
-4. EASY DEFAULT ASSIGNMENT
-   - When booking RAMMER-4S or unique R1001, both get the same defaults
-   - System can automatically add 2L petrol, 1 helmet, 1 funnel
-   - Optional accessories can be easily added per customer request
-
-5. SIMPLIFIED MAINTENANCE
-   - Add new accessory once in core.accessories
-   - Link to multiple equipment types as needed
-   - Change default quantities without affecting other equipment
-
-6. BETTER REPORTING
-   - Views provide easy access to default accessories per equipment type
-   - Can easily see which equipment types use specific accessories
-   - Clear tracking of consumable vs non-consumable items
-
-EXAMPLE USAGE:
-- Customer books "RAMMER-4S" → System automatically includes 2L petrol + helmet + funnel
-- Customer books specific "R1001" → Same defaults applied (because R1001 is type RAMMER-4S)
-- Customer can add optional OIL-4S (1L) if desired
-- Different customers can have different optional accessories for same equipment type
+Key features:
+- Moil and Spade chisels start at 1 (the 2 defaults you requested)
+- Cone and Flat chisels start at 0 (the 2 non-defaults you requested)
+- User can adjust all quantities with +/- buttons
+- Safety equipment is automatically included
 */

@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime
 import logging
 import os
+import json
 
 # Import your existing database service
 from api.database.database_service import DatabaseService, DatabaseError
@@ -24,6 +25,8 @@ hire_bp = Blueprint('hire', __name__, url_prefix='/api/hire')
 # Initialize database service
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://SYSTEM:SYSTEM@localhost:5432/task_management')
 db_service = DatabaseService(DATABASE_URL)
+equipment_service = EquipmentService(db_service)
+hire_service = HireService(db_service)
 
 # Initialize all services
 customer_service = CustomerService(db_service)
@@ -32,6 +35,23 @@ hire_service = HireService(db_service)
 allocation_service = AllocationService(db_service)
 driver_task_service = DriverTaskService(db_service)
 quality_control_service = QualityControlService(db_service)
+
+
+# =============================================================================
+# REGISTER BLUEPRINT
+# =============================================================================
+
+def register_routes(app):
+    """Register all hire management routes with the Flask app"""
+    app.register_blueprint(hire_bp)
+    
+    # Add CORS headers
+    @hire_bp.after_request
+    def after_request(response):
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -73,11 +93,14 @@ def get_current_user_id():
     """Get current user ID from session - replace with your auth logic"""
     return 1  # Replace with actual session-based user ID
 
-def parse_date(date_str):
+def parse_date(date_string):
     """Parse date string to date object"""
-    if date_str:
-        return datetime.strptime(date_str, '%Y-%m-%d').date()
-    return None
+    if not date_string:
+        return None
+    try:
+        return datetime.strptime(date_string, '%Y-%m-%d').date()
+    except ValueError:
+        return None
 
 # =============================================================================
 # CUSTOMER ENDPOINTS
@@ -153,17 +176,17 @@ def get_customer_summary(customer_id: int):
 
 @hire_bp.route('/equipment/types', methods=['GET'])
 def get_equipment_types():
-    """Get equipment types for Phase 1 - Generic booking"""
+    """Get available equipment types for selection"""
     try:
         search_term = request.args.get('search')
         delivery_date = parse_date(request.args.get('delivery_date'))
         
-        equipment_types = equipment_service.get_equipment_types(search_term, delivery_date)
+        equipment = equipment_service.get_equipment_types(search_term, delivery_date)
         
         return jsonify({
             'success': True,
-            'data': equipment_types,
-            'count': len(equipment_types)
+            'data': equipment,
+            'count': len(equipment)
         })
     except Exception as e:
         return handle_api_error(e)
@@ -207,16 +230,55 @@ def calculate_auto_accessories():
     """Calculate default accessories for equipment selection"""
     try:
         data = request.get_json()
-        equipment_selections = data.get('equipment_selections', [])
         
+        # Enhanced debugging
+        print(f"=== AUTO-ACCESSORIES DEBUG ===")
+        print(f"Received data: {data}")
+        
+        equipment_selections = data.get('equipment_selections', [])
+        print(f"Equipment selections: {equipment_selections}")
+        
+        if not equipment_selections:
+            print("No equipment selections provided")
+            return jsonify({
+                'success': True,
+                'data': [],
+                'count': 0,
+                'message': 'No equipment selected'
+            })
+        
+        # Validate equipment selections format
+        for i, eq in enumerate(equipment_selections):
+            print(f"Equipment {i}: {eq}")
+            if 'equipment_type_id' not in eq or 'quantity' not in eq:
+                print(f"Invalid equipment selection format at index {i}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid equipment selection format. Expected: {equipment_type_id, quantity}',
+                    'received': eq
+                }), 400
+        
+        # Call the equipment service
+        print("Calling equipment_service.calculate_auto_accessories...")
         auto_accessories = equipment_service.calculate_auto_accessories(equipment_selections)
+        print(f"Equipment service returned: {auto_accessories}")
+        print(f"Number of auto-accessories: {len(auto_accessories)}")
+        
+        # Debug each accessory
+        for i, acc in enumerate(auto_accessories):
+            print(f"Accessory {i}: {acc}")
         
         return jsonify({
             'success': True,
             'data': auto_accessories,
             'count': len(auto_accessories)
         })
+        
     except Exception as e:
+        # Enhanced error logging
+        import traceback
+        print(f"Auto-accessories error: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
         return handle_api_error(e)
 
 @hire_bp.route('/equipment/availability', methods=['POST'])
@@ -240,27 +302,36 @@ def check_equipment_availability():
 @hire_bp.route('/equipment/accessories-complete', methods=['POST'])
 def get_equipment_accessories_complete():
     """
-    Get ALL accessories for selected equipment with proper quantities.
-    This is the simple workflow endpoint that returns everything at once.
+    Get complete accessories data for equipment selection summary.
+    This combines auto-accessories with manual accessories in one call.
     """
     try:
         data = request.get_json()
         equipment_selections = data.get('equipment_selections', [])
         
-        if not equipment_selections:
-            return jsonify({
-                'success': True,
-                'data': [],
-                'count': 0
-            })
+        # Get auto-accessories from selected equipment
+        backend_selections = [
+            {
+                'equipment_type_id': eq.get('id'),
+                'quantity': eq.get('quantity', 1)
+            }
+            for eq in equipment_selections if eq.get('quantity', 0) > 0
+        ]
         
-        # Get complete accessories list with proper quantities
-        complete_accessories = equipment_service.get_equipment_accessories_complete(equipment_selections)
+        auto_accessories = []
+        if backend_selections:
+            auto_accessories = equipment_service.calculate_auto_accessories(backend_selections)
+        
+        # Get all available accessories for manual selection
+        all_accessories = equipment_service.get_equipment_accessories([])
         
         return jsonify({
             'success': True,
-            'data': complete_accessories,
-            'count': len(complete_accessories)
+            'data': {
+                'auto_accessories': auto_accessories,
+                'available_accessories': all_accessories,
+                'equipment_count': len(equipment_selections)
+            }
         })
     except Exception as e:
         return handle_api_error(e)
@@ -269,13 +340,49 @@ def get_equipment_accessories_complete():
 # NEW ACCESSORY ENDPOINTS
 # =============================================================================
 
-@hire_bp.route('/accessories/all', methods=['GET'])
+@hire_bp.route('/equipment/accessories', methods=['GET'])
 def get_all_accessories():
-    """Get all accessories in the system for standalone selection"""
+    """Get all accessories for standalone selection"""
     try:
         search_term = request.args.get('search')
         
-        accessories = equipment_service.get_all_accessories(search_term)
+        # Get all accessories regardless of equipment type
+        accessories = equipment_service.get_equipment_accessories([])
+        
+        # Filter by search term if provided
+        if search_term:
+            search_lower = search_term.lower()
+            accessories = [
+                acc for acc in accessories 
+                if search_lower in acc['accessory_name'].lower() or 
+                   search_lower in acc['accessory_code'].lower()
+            ]
+        
+        return jsonify({
+            'success': True,
+            'data': accessories,
+            'count': len(accessories)
+        })
+    except Exception as e:
+        return handle_api_error(e)
+    
+@hire_bp.route('/equipment/accessories', methods=['GET'])
+def get_all_accessories_list():
+    """Get all accessories for standalone selection"""
+    try:
+        search_term = request.args.get('search')
+        
+        # Get all accessories (empty list means get all)
+        accessories = equipment_service.get_equipment_accessories([])
+        
+        # Filter by search term if provided
+        if search_term:
+            search_lower = search_term.lower()
+            accessories = [
+                acc for acc in accessories 
+                if search_lower in acc.get('accessory_name', '').lower() or 
+                   search_lower in acc.get('accessory_code', '').lower()
+            ]
         
         return jsonify({
             'success': True,
@@ -337,38 +444,70 @@ def validate_hire_request():
     try:
         hire_data = request.get_json()
         
-        validation_result = hire_service.validate_hire_request(hire_data)
+        # Transform equipment selections for validation
+        equipment_selections = [
+            {
+                'equipment_type_id': eq.get('id'),
+                'quantity': eq.get('quantity', 1)
+            }
+            for eq in hire_data.get('equipment_selections', [])
+        ]
+        
+        validation_data = {
+            'customer_id': hire_data.get('customer_id'),
+            'contact_id': hire_data.get('contact_id'),
+            'site_id': hire_data.get('site_id'),
+            'equipment_selections': equipment_selections,
+            'delivery_date': hire_data.get('delivery_date'),
+            'estimated_amount': hire_data.get('estimated_amount', 0)
+        }
+        
+        result = hire_service.validate_hire_request(validation_data)
         
         return jsonify({
             'success': True,
-            'data': validation_result
+            'data': result
         })
     except Exception as e:
         return handle_api_error(e)
 
-@hire_bp.route('/hires', methods=['POST'])
 def create_hire():
-    """Create new hire interaction"""
+    """Create new hire interaction with complete workflow"""
     try:
-        process_data = request.get_json()
-        employee_id = get_current_user_id()
+        hire_data = request.get_json()
         
-        result = hire_service.create_hire_from_process_data(process_data, employee_id)
+        # Transform data for backend
+        equipment_selections = [
+            {
+                'equipment_type_id': eq.get('id'),
+                'quantity': eq.get('quantity', 1)
+            }
+            for eq in hire_data.get('equipment_selections', [])
+        ]
         
-        if result.get('success', False):
-            return jsonify({
-                'success': True,
-                'data': result,
-                'message': result.get('message', 'Hire created successfully')
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': result.get('message', 'Failed to create hire'),
-                'validation_errors': result.get('validation_errors', []),
-                'warnings': result.get('warnings', [])
-            }), 400
-            
+        accessory_selections = hire_data.get('accessory_selections', [])
+        
+        creation_data = {
+            'customer_id': hire_data.get('customer_id'),
+            'contact_id': hire_data.get('contact_id'),
+            'employee_id': hire_data.get('employee_id', 1),  # Default to system user
+            'site_id': hire_data.get('site_id'),
+            'contact_method': hire_data.get('contact_method', 'web'),
+            'notes': hire_data.get('notes', ''),
+            'equipment_selections': equipment_selections,
+            'accessory_selections': accessory_selections,
+            'delivery_date': hire_data.get('delivery_date'),
+            'delivery_time': hire_data.get('delivery_time'),
+            'hire_start_date': hire_data.get('hire_start_date'),
+            'estimated_hire_end': hire_data.get('estimated_hire_end')
+        }
+        
+        result = hire_service.create_hire_interaction(creation_data)
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        })
     except Exception as e:
         return handle_api_error(e)
 
@@ -653,6 +792,46 @@ def get_qc_summary():
         return handle_api_error(e)
 
 # =============================================================================
+# HELPER ENDPOINTS FOR UI
+# =============================================================================
+
+@hire_bp.route('/interface-data', methods=['GET'])
+def get_interface_data():
+    """Get all data needed for hire interface initialization"""
+    try:
+        delivery_date = parse_date(request.args.get('delivery_date'))
+        
+        # Get equipment types
+        equipment_types = equipment_service.get_equipment_types(None, delivery_date)
+        
+        # Get all accessories
+        accessories = equipment_service.get_equipment_accessories([])
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'equipment_types': equipment_types,
+                'accessories': accessories,
+                'delivery_date': delivery_date.isoformat() if delivery_date else None
+            }
+        })
+    except Exception as e:
+        return handle_api_error(e)
+
+@hire_bp.route('/test', methods=['GET'])
+def test_endpoint():
+    """Test endpoint to verify API is working"""
+    try:
+        return jsonify({
+            'success': True,
+            'message': 'Hire API is working',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return handle_api_error(e)
+
+
+# =============================================================================
 # TEST ENDPOINTS
 # =============================================================================
 
@@ -716,6 +895,154 @@ def test_accessories_endpoints():
         })
     except Exception as e:
         return handle_api_error(e)
+    
+
+@hire_bp.route('/test', methods=['GET'])
+def test_hire_endpoints():
+    """Test endpoint to verify hire API is working"""
+    try:
+        return jsonify({
+            'success': True,
+            'message': 'Hire API is working correctly',
+            'available_endpoints': [
+                '/api/hire/equipment/types',
+                '/api/hire/equipment/accessories',
+                '/api/hire/equipment/auto-accessories'
+            ],
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return handle_api_error(e)
+    
+@hire_bp.route('/equipment/test-service', methods=['GET'])
+def test_equipment_service():
+    """Test the equipment service directly"""
+    try:
+        # Test equipment types
+        equipment_types = equipment_service.get_equipment_types()
+        
+        # Test auto-accessories with sample data
+        sample_selections = [
+            {'equipment_type_id': 1, 'quantity': 1}
+        ]
+        auto_accessories = equipment_service.calculate_auto_accessories(sample_selections)
+        
+        return jsonify({
+            'success': True,
+            'tests': {
+                'equipment_types_count': len(equipment_types),
+                'sample_auto_accessories_count': len(auto_accessories),
+                'equipment_types_sample': equipment_types[:1] if equipment_types else [],
+                'auto_accessories_sample': auto_accessories[:1] if auto_accessories else []
+            }
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+    
+@hire_bp.route('/equipment/debug-auto-accessories', methods=['GET', 'POST'])
+def debug_auto_accessories():
+    """Debug endpoint to test auto-accessories functionality"""
+    try:
+        debug_info = {
+            'timestamp': datetime.now().isoformat(),
+            'tests': {}
+        }
+        
+        # Test 1: Direct stored procedure call
+        try:
+            print("Testing stored procedure directly...")
+            test_equipment = [{'equipment_type_id': 1, 'quantity': 1}]
+            equipment_json = json.dumps(test_equipment)
+            
+            raw_result = db_service.execute_procedure(
+                'sp_calculate_auto_accessories',
+                [equipment_json]
+            )
+            
+            debug_info['tests']['stored_procedure'] = {
+                'success': True,
+                'input': test_equipment,
+                'raw_output': raw_result,
+                'count': len(raw_result) if raw_result else 0
+            }
+        except Exception as e:
+            debug_info['tests']['stored_procedure'] = {
+                'success': False,
+                'error': str(e)
+            }
+        
+        # Test 2: Equipment service call
+        try:
+            print("Testing equipment service...")
+            test_equipment = [{'equipment_type_id': 1, 'quantity': 1}]
+            
+            service_result = equipment_service.calculate_auto_accessories(test_equipment)
+            
+            debug_info['tests']['equipment_service'] = {
+                'success': True,
+                'input': test_equipment,
+                'processed_output': service_result,
+                'count': len(service_result) if service_result else 0
+            }
+        except Exception as e:
+            debug_info['tests']['equipment_service'] = {
+                'success': False,
+                'error': str(e)
+            }
+        
+        # Test 3: Test with POST data (if provided)
+        if request.method == 'POST':
+            try:
+                data = request.get_json()
+                equipment_selections = data.get('equipment_selections', [])
+                
+                if equipment_selections:
+                    post_result = equipment_service.calculate_auto_accessories(equipment_selections)
+                    
+                    debug_info['tests']['post_data'] = {
+                        'success': True,
+                        'input': equipment_selections,
+                        'output': post_result,
+                        'count': len(post_result) if post_result else 0
+                    }
+            except Exception as e:
+                debug_info['tests']['post_data'] = {
+                    'success': False,
+                    'error': str(e)
+                }
+        
+        # Test 4: Database connectivity
+        try:
+            # Test if we can get equipment types
+            equipment_types = equipment_service.get_equipment_types()
+            debug_info['tests']['database_connectivity'] = {
+                'success': True,
+                'equipment_types_count': len(equipment_types),
+                'sample_equipment': equipment_types[:3] if equipment_types else []
+            }
+        except Exception as e:
+            debug_info['tests']['database_connectivity'] = {
+                'success': False,
+                'error': str(e)
+            }
+        
+        return jsonify({
+            'success': True,
+            'debug_info': debug_info
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 # =============================================================================
 # ERROR HANDLERS
