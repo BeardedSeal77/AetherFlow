@@ -307,7 +307,7 @@ COMMENT ON COLUMN interactions.interaction_equipment.allocation_status IS 'Track
 -- =============================================================================
 -- INTERACTION ACCESSORIES JUNCTION (updated with allocation linking)
 -- =============================================================================
-CCREATE TABLE interactions.interaction_accessories (
+CREATE TABLE interactions.interaction_accessories (
     id SERIAL PRIMARY KEY,
     interaction_id INTEGER NOT NULL,
     accessory_id INTEGER NOT NULL,

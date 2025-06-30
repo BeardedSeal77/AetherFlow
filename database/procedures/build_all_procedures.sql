@@ -1,12 +1,12 @@
 -- =============================================================================
 -- BUILD ALL STORED PROCEDURES - EQUIPMENT HIRE MANAGEMENT SYSTEM
 -- =============================================================================
--- Purpose: Install all stored procedures in correct dependency order
--- Usage: Run this script to install/update all procedures
+-- Purpose: Install all stored procedures and views in correct dependency order
+-- Usage: Run this script to install/update all procedures and views
 -- =============================================================================
 
-\echo 'Starting Stored Procedures Installation...'
-\echo '=========================================='
+\echo 'Starting Stored Procedures and Views Installation...'
+\echo '==================================================='
 
 -- Set search path for all procedures
 SET search_path TO core, interactions, tasks, system, public;
@@ -18,7 +18,7 @@ SET search_path TO core, interactions, tasks, system, public;
 \echo 'Installing utility procedures...'
 
 -- Reference number generation
-\i database/procedures/sp_generate_reference_number.sql
+\i database/procedures/utility/sp_generate_reference_number.sql
 
 -- =============================================================================
 -- CUSTOMER SELECTION PROCEDURES
@@ -121,12 +121,37 @@ SET search_path TO core, interactions, tasks, system, public;
 \i database/procedures/sample/sp_create_sample_hire.sql
 
 -- =============================================================================
+-- DATABASE VIEWS (Install after procedures)
+-- =============================================================================
+
+\echo 'Installing database views...'
+\echo 'Installing equipment-accessories relationship views...'
+
+-- Core equipment-accessories views
+\i database/views/core/v_equipment_default_accessories.sql
+\i database/views/core/v_equipment_all_accessories.sql
+\i database/views/core/v_accessories_with_equipment.sql
+\i database/views/core/v_equipment_auto_accessories_summary.sql
+\i database/views/core/v_hire_accessories_detailed.sql
+
+\echo '✓ Views installation complete'
+
+-- =============================================================================
 -- PERMISSIONS
 -- =============================================================================
 
 \echo 'Setting permissions...'
 
 \i database/procedures/permissions.sql
+
+-- Grant SELECT permissions on views to all users
+GRANT SELECT ON core.v_equipment_default_accessories TO PUBLIC;
+GRANT SELECT ON core.v_equipment_all_accessories TO PUBLIC;
+GRANT SELECT ON core.v_accessories_with_equipment TO PUBLIC;
+GRANT SELECT ON core.v_equipment_auto_accessories_summary TO PUBLIC;
+GRANT SELECT ON interactions.v_hire_accessories_detailed TO PUBLIC;
+
+\echo '✓ View permissions granted'
 
 -- =============================================================================
 -- VERIFICATION
@@ -146,6 +171,17 @@ WHERE n.nspname IN ('core', 'interactions', 'tasks', 'system', 'public')
 GROUP BY n.nspname
 ORDER BY n.nspname;
 
+-- Check view counts
+\echo 'Checking installed views...'
+SELECT 
+    schemaname as schema_name,
+    COUNT(*) as view_count
+FROM pg_views 
+WHERE schemaname IN ('core', 'interactions', 'tasks', 'system', 'public')
+  AND viewname LIKE 'v_%'
+GROUP BY schemaname
+ORDER BY schemaname;
+
 -- List all installed procedures
 \echo 'Installed Procedures:'
 \echo '===================='
@@ -160,6 +196,19 @@ WHERE n.nspname IN ('core', 'interactions', 'tasks', 'system', 'public')
   AND p.prokind = 'f'
   AND p.proname LIKE 'sp_%'
 ORDER BY n.nspname, p.proname;
+
+-- List all installed views
+\echo 'Installed Views:'
+\echo '================'
+
+SELECT 
+    schemaname as schema,
+    viewname as view_name,
+    definition as view_definition
+FROM pg_views 
+WHERE schemaname IN ('core', 'interactions', 'tasks', 'system', 'public')
+  AND viewname LIKE 'v_%'
+ORDER BY schemaname, viewname;
 
 -- =============================================================================
 -- TEST BASIC FUNCTIONALITY
@@ -179,13 +228,25 @@ SELECT COUNT(*) as customer_count FROM sp_get_customers_for_selection();
 SELECT 'Testing equipment types:' as test;
 SELECT COUNT(*) as equipment_type_count FROM sp_get_available_equipment_types();
 
+-- Test views (if sample data exists)
+\echo 'Testing views with sample data...'
+
+-- Test equipment accessories view
+SELECT 'Testing equipment accessories view:' as test;
+SELECT COUNT(*) as accessories_count FROM core.v_equipment_default_accessories;
+
+-- Test accessories summary view
+SELECT 'Testing accessories summary view:' as test;
+SELECT COUNT(*) as equipment_types_with_accessories FROM core.v_equipment_auto_accessories_summary 
+WHERE default_accessories_count > 0;
+
 -- =============================================================================
 -- COMPLETION
 -- =============================================================================
 
 \echo ''
-\echo 'Stored Procedures Installation Complete!'
-\echo '========================================'
+\echo 'Stored Procedures and Views Installation Complete!'
+\echo '=================================================='
 \echo ''
 \echo 'Summary:'
 \echo '- Customer Selection: 3 procedures'
@@ -198,11 +259,19 @@ SELECT COUNT(*) as equipment_type_count FROM sp_get_available_equipment_types();
 \echo '- Driver Task Management: 3 procedures'
 \echo '- Extra Utilities: 4 procedures'
 \echo '- Sample Data: 1 procedure'
+\echo '- Database Views: 5 views'
 \echo ''
-\echo 'Total: 29 stored procedures installed'
+\echo 'Total: 29 stored procedures + 5 views installed'
+\echo ''
+\echo 'Views Available:'
+\echo '- core.v_equipment_default_accessories'
+\echo '- core.v_equipment_all_accessories'
+\echo '- core.v_accessories_with_equipment'
+\echo '- core.v_equipment_auto_accessories_summary'
+\echo '- interactions.v_hire_accessories_detailed'
 \echo ''
 \echo 'Next Steps:'
-\echo '1. Test procedures using sample data'
+\echo '1. Test procedures and views using sample data'
 \echo '2. Integrate with Python Flask services'
 \echo '3. Build frontend API endpoints'
 \echo '4. Run sp_create_sample_hire() to create test data'
@@ -216,4 +285,9 @@ SELECT COUNT(*) as equipment_type_count FROM sp_get_available_equipment_types();
 \echo '=========================='
 \echo 'Run: SELECT * FROM sp_create_sample_hire();'
 \echo 'This will create a complete sample hire interaction for testing'
+\echo ''
+\echo 'View Examples:'
+\echo '- SELECT * FROM core.v_equipment_default_accessories LIMIT 5;'
+\echo '- SELECT * FROM core.v_accessories_with_equipment LIMIT 5;'
+\echo '- SELECT * FROM core.v_equipment_auto_accessories_summary LIMIT 5;'
 \echo ''
