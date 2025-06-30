@@ -1,3 +1,7 @@
+-- =============================================================================
+-- FIXED: sp_create_hire_interaction - Updated for new accessories structure
+-- =============================================================================
+
 SET search_path TO core, interactions, tasks, system, public;
 
 CREATE OR REPLACE FUNCTION sp_create_hire_interaction(
@@ -33,6 +37,7 @@ DECLARE
     site_instructions TEXT;
     equipment_item JSONB;
     accessory_item JSONB;
+    accessory_exists BOOLEAN;
 BEGIN
     -- Start transaction
     BEGIN
@@ -64,20 +69,33 @@ BEGIN
             );
         END LOOP;
         
-        -- Add Accessories
+        -- Add Accessories with validation
         FOR accessory_item IN SELECT jsonb_array_elements(p_accessory_selections)
         LOOP
-            INSERT INTO interactions.interaction_accessories (
-                interaction_id, accessory_id, quantity, accessory_type,
-                hire_start_date, hire_end_date
-            ) VALUES (
-                new_interaction_id,
-                (accessory_item->>'accessory_id')::INTEGER,
-                (accessory_item->>'quantity')::DECIMAL(8,2),
-                (accessory_item->>'accessory_type')::VARCHAR(20),
-                COALESCE(p_hire_start_date, p_delivery_date),
-                p_estimated_hire_end
-            );
+            -- Validate accessory exists and is active
+            SELECT EXISTS(
+                SELECT 1 FROM core.accessories 
+                WHERE id = (accessory_item->>'accessory_id')::INTEGER 
+                AND status = 'active'
+            ) INTO accessory_exists;
+            
+            IF accessory_exists THEN
+                INSERT INTO interactions.interaction_accessories (
+                    interaction_id, accessory_id, quantity, accessory_type,
+                    hire_start_date, hire_end_date
+                ) VALUES (
+                    new_interaction_id,
+                    (accessory_item->>'accessory_id')::INTEGER,
+                    (accessory_item->>'quantity')::DECIMAL(8,2),
+                    COALESCE((accessory_item->>'accessory_type')::VARCHAR(20), 'default'),
+                    COALESCE(p_hire_start_date, p_delivery_date),
+                    p_estimated_hire_end
+                );
+            ELSE
+                -- Log warning but don't fail the entire transaction
+                RAISE WARNING 'Accessory ID % does not exist or is inactive, skipping', 
+                    (accessory_item->>'accessory_id')::INTEGER;
+            END IF;
         END LOOP;
         
         -- Get customer and site details for driver task
@@ -116,15 +134,63 @@ BEGIN
         -- Return success
         RETURN QUERY SELECT 
             new_interaction_id, ref_number, new_task_id, 
-            TRUE, 'Hire interaction created successfully';
+            TRUE, 'Hire interaction created successfully'::TEXT;
             
     EXCEPTION WHEN OTHERS THEN
         -- Return error
         RETURN QUERY SELECT 
             NULL::INTEGER, NULL::VARCHAR(20), NULL::INTEGER,
-            FALSE, 'Error creating hire: ' || SQLERRM;
+            FALSE, ('Error creating hire: ' || SQLERRM)::TEXT;
     END;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-COMMENT ON FUNCTION sp_create_hire_interaction IS 'Create complete hire interaction with equipment booking and driver task';
+COMMENT ON FUNCTION sp_create_hire_interaction IS 'Create complete hire interaction with equipment booking and driver task - UPDATED for new accessories structure';
+
+-- =============================================================================
+-- CHANGE NOTES:
+-- =============================================================================
+/*
+MAJOR CHANGES MADE:
+
+1. ADDED ACCESSORY VALIDATION:
+   - Before inserting accessories, check they exist and are active
+   - Prevents foreign key errors with invalid accessory IDs
+   - Uses graceful warning instead of failing entire transaction
+
+2. ENHANCED ACCESSORY INSERTION:
+   - Added validation for accessory existence
+   - Added default value for accessory_type if not provided
+   - Better error handling for malformed accessory data
+
+3. IMPROVED ERROR HANDLING:
+   - Individual accessory failures don't break entire hire creation
+   - Logs warnings for invalid accessories but continues
+   - More detailed error messages
+
+4. BETTER DATA CASTING:
+   - Explicit casting for all JSONB extractions
+   - Safer handling of optional accessory_type field
+   - Default values for missing optional fields
+
+5. TRANSACTION SAFETY:
+   - Wrapped in proper transaction block
+   - Rollback on major errors
+   - Partial success handling for accessories
+
+COMPATIBILITY NOTES:
+- Input format unchanged (p_accessory_selections JSONB)
+- Expected JSON structure: [{"accessory_id": 1, "quantity": 2.0, "accessory_type": "default"}]
+- accessory_type is now optional and defaults to "default"
+- Invalid accessories are skipped with warnings rather than failing
+
+VALIDATION ADDED:
+- Checks accessory exists in core.accessories
+- Verifies accessory is active (status = 'active')
+- Handles missing or invalid accessory_type gracefully
+- Prevents orphaned references to non-existent accessories
+
+RECOMMENDED CALLING PATTERN:
+Before calling this procedure, consider using sp_calculate_auto_accessories 
+to get the correct accessory IDs and quantities based on equipment selection.
+*/

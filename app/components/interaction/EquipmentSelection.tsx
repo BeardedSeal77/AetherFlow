@@ -1,4 +1,4 @@
-// app/components/interaction/EquipmentSelection.tsx
+// app/components/interaction/EquipmentSelection.tsx - UPDATED for new accessories structure
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
@@ -16,9 +16,10 @@ interface Accessory {
   accessory_id: number
   equipment_type_id?: number
   accessory_name: string
+  accessory_code: string
   accessory_type: 'default' | 'optional'
-  billing_method: string
   default_quantity: number
+  unit_of_measure: string
   description: string
   is_consumable: boolean
   type_name?: string
@@ -65,6 +66,7 @@ export default function EquipmentSelection({
   
   const [equipmentMode, setEquipmentMode] = useState<'generic' | 'specific'>('generic')
   const [isLoading, setIsLoading] = useState(false)
+  const [autoAccessoriesLoading, setAutoAccessoriesLoading] = useState(false)
   
   const equipmentRef = useRef<HTMLDivElement>(null)
   const accessoryRef = useRef<HTMLDivElement>(null)
@@ -136,24 +138,25 @@ export default function EquipmentSelection({
         fetch('/api/hire/equipment/accessories', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ equipment_type_ids: [] })
+          body: JSON.stringify({ equipment_type_ids: [] }) // Get all accessories
         })
       ])
 
-      const equipmentData = await equipmentRes.json()
-      const accessoriesData = await accessoriesRes.json()
+      if (equipmentRes.ok) {
+        const equipmentData = await equipmentRes.json()
+        if (equipmentData.success) {
+          setEquipmentTypes(equipmentData.data)
+        }
+      }
 
-      if (equipmentData.success) {
-        setEquipmentTypes(equipmentData.data)
-        setFilteredEquipment(equipmentData.data.slice(0, 10))
+      if (accessoriesRes.ok) {
+        const accessoriesData = await accessoriesRes.json()
+        if (accessoriesData.success) {
+          setAccessories(accessoriesData.data)
+        }
       }
-      
-      if (accessoriesData.success) {
-        setAccessories(accessoriesData.data)
-        setFilteredAccessories(accessoriesData.data.filter((acc: Accessory) => acc.accessory_type === 'optional').slice(0, 10))
-      }
-    } catch (err) {
-      console.error('Failed to load equipment data:', err)
+    } catch (error) {
+      console.error('Failed to load equipment data:', error)
     } finally {
       setIsLoading(false)
     }
@@ -161,37 +164,44 @@ export default function EquipmentSelection({
 
   const calculateAutoAccessories = async () => {
     try {
+      setAutoAccessoriesLoading(true)
+      
       const response = await fetch('/api/hire/equipment/auto-accessories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ equipment_selections: equipmentSelections })
       })
 
-      const data = await response.json()
-      if (data.success) {
-        const autoAccessories = data.data.map((acc: any) => ({
-          accessory_id: acc.accessory_id,
-          quantity: acc.total_quantity,
-          accessory_type: 'default',
-          accessory_name: acc.accessory_name
-        }))
-        
-        // Keep existing optional accessories, replace defaults
-        const optionalAccessories = accessorySelections.filter(as => as.accessory_type !== 'default')
-        onAccessoriesChange([...optionalAccessories, ...autoAccessories])
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          // Convert auto accessories to our format
+          const autoAccessories = data.data.map((acc: any) => ({
+            accessory_id: acc.accessory_id,
+            quantity: acc.total_quantity,
+            accessory_type: 'default',
+            accessory_name: acc.accessory_name
+          }))
+
+          // Keep existing optional accessories and add/update default ones
+          const optionalAccessories = accessorySelections.filter(as => as.accessory_type !== 'default')
+          onAccessoriesChange([...autoAccessories, ...optionalAccessories])
+        }
       }
-    } catch (err) {
-      console.error('Failed to calculate auto accessories:', err)
+    } catch (error) {
+      console.error('Failed to calculate auto accessories:', error)
+    } finally {
+      setAutoAccessoriesLoading(false)
     }
   }
 
-  const addEquipmentSelection = (equipment: EquipmentType) => {
-    const existing = equipmentSelections.find(es => es.equipment_type_id === equipment.equipment_type_id)
+  const addEquipmentType = (equipmentType: EquipmentType) => {
+    const existing = equipmentSelections.find(es => es.equipment_type_id === equipmentType.equipment_type_id)
     
     if (existing) {
       // Increase quantity
       const updated = equipmentSelections.map(es => 
-        es.equipment_type_id === equipment.equipment_type_id 
+        es.equipment_type_id === equipmentType.equipment_type_id 
           ? { ...es, quantity: es.quantity + 1 }
           : es
       )
@@ -199,10 +209,10 @@ export default function EquipmentSelection({
     } else {
       // Add new selection
       const newSelection = {
-        equipment_type_id: equipment.equipment_type_id,
+        equipment_type_id: equipmentType.equipment_type_id,
         quantity: 1,
-        type_name: equipment.type_name,
-        type_code: equipment.type_code
+        type_name: equipmentType.type_name,
+        type_code: equipmentType.type_code
       }
       onEquipmentChange([...equipmentSelections, newSelection])
     }
@@ -257,6 +267,16 @@ export default function EquipmentSelection({
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="bg-surface p-6 rounded-lg">
+        <div className="flex justify-center items-center h-32">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gold"></div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-surface p-6 rounded-lg">
       <div className="flex justify-between items-center mb-4">
@@ -279,51 +299,53 @@ export default function EquipmentSelection({
                 ? 'bg-gold text-base' 
                 : 'bg-overlay text-text hover:bg-highlight-med'
             }`}
-            disabled
           >
             Specific Equipment
           </button>
         </div>
       </div>
 
-      {/* Equipment Search */}
+      <div className="text-sm text-subtle mb-4">
+        {equipmentMode === 'generic' 
+          ? 'Select equipment types with quantities (Phase 1 booking - specific units allocated later)'
+          : 'Select specific equipment units (Direct Phase 2 allocation - one unit per selection)'
+        }
+      </div>
+
+      {/* Equipment Type Search */}
       <div className="mb-6">
+        <h3 className="font-medium text-text mb-3">Add Equipment</h3>
         <div className="relative" ref={equipmentRef}>
-          <label className="block text-sm font-medium text-text mb-2">
-            Search Equipment <span className="text-red">*</span>
-          </label>
           <input
             type="text"
             value={equipmentSearch}
-            onChange={(e) => {
-              setEquipmentSearch(e.target.value)
-              setShowEquipmentDropdown(true)
-            }}
+            onChange={(e) => setEquipmentSearch(e.target.value)}
             onFocus={() => setShowEquipmentDropdown(true)}
-            placeholder="Search for equipment types..."
+            placeholder="Search equipment types..."
             className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-            disabled={isLoading}
           />
           
           {showEquipmentDropdown && (
-            <div className="absolute z-50 w-full bg-surface border border-highlight-med rounded-md mt-1 max-h-60 overflow-y-auto shadow-lg">
+            <div className="absolute z-50 w-full mt-1 bg-surface border border-highlight-med rounded shadow-lg max-h-60 overflow-y-auto">
               {filteredEquipment.length > 0 ? (
                 filteredEquipment.map(equipment => (
                   <div
                     key={equipment.equipment_type_id}
-                    onClick={() => addEquipmentSelection(equipment)}
-                    className="p-3 hover:bg-overlay cursor-pointer border-b border-highlight-low last:border-b-0"
+                    onClick={() => addEquipmentType(equipment)}
+                    className="p-3 hover:bg-highlight-low cursor-pointer border-b border-highlight-low last:border-0"
                   >
                     <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-medium text-text">{equipment.type_name}</div>
-                        <div className="text-sm text-subtle">{equipment.type_code}</div>
-                        <div className="text-xs text-muted">{equipment.description}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm text-subtle">
-                          {equipment.available_units}/{equipment.total_units} available
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-text">{equipment.type_name}</span>
+                          <span className="text-sm text-subtle">({equipment.type_code})</span>
                         </div>
+                        <div className="text-sm text-subtle mt-1">{equipment.description}</div>
+                        <div className="text-xs text-subtle mt-1">
+                          Available: {equipment.available_units} / {equipment.total_units} units
+                        </div>
+                      </div>
+                      <div className="ml-3">
                         <div className={`text-xs px-2 py-1 rounded ${
                           equipment.available_units > 0 ? 'bg-green/20 text-green' : 'bg-red/20 text-red'
                         }`}>
@@ -381,119 +403,156 @@ export default function EquipmentSelection({
       {/* Default Accessories */}
       {accessorySelections.filter(as => as.accessory_type === 'default').length > 0 && (
         <div className="mb-6">
-          <h3 className="font-medium text-text mb-3">Default Accessories (Auto-added)</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="font-medium text-text">Default Accessories (Auto-added)</h3>
+            {autoAccessoriesLoading && (
+              <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gold"></div>
+            )}
+          </div>
           <div className="space-y-2">
-            {accessorySelections.filter(as => as.accessory_type === 'default').map(selection => (
-              <div key={selection.accessory_id} className="flex items-center justify-between bg-green/10 p-3 rounded">
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">📦</span>
-                  <span className="font-medium text-text">{selection.accessory_name}</span>
+            {accessorySelections.filter(as => as.accessory_type === 'default').map(selection => {
+              const accessory = accessories.find(a => a.accessory_id === selection.accessory_id)
+              return (
+                <div key={selection.accessory_id} className="flex items-center justify-between bg-green/10 p-3 rounded">
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">📦</span>
+                    <div>
+                      <span className="font-medium text-text">{selection.accessory_name}</span>
+                      {accessory?.is_consumable && (
+                        <span className="text-xs bg-yellow/20 text-yellow px-2 py-1 rounded ml-2">CONSUMABLE</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-subtle">
+                      {selection.quantity} {accessory?.unit_of_measure || 'item(s)'}
+                    </span>
+                    <button
+                      onClick={() => updateAccessoryQuantity(selection.accessory_id, selection.quantity + (accessory?.is_consumable ? 5 : 1))}
+                      className="text-green hover:text-blue text-lg"
+                      title="Increase quantity"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-subtle">Qty: {selection.quantity}</span>
-                  <span className="text-xs px-2 py-1 rounded bg-green/20 text-green">DEFAULT</span>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
 
-      {/* Optional Accessories Search */}
+      {/* Optional Accessories */}
       <div className="mb-6">
+        <h3 className="font-medium text-text mb-3">Optional Accessories</h3>
         <div className="relative" ref={accessoryRef}>
-          <label className="block text-sm font-medium text-text mb-2">
-            Add Optional Accessories
-          </label>
           <input
             type="text"
             value={accessorySearch}
-            onChange={(e) => {
-              setAccessorySearch(e.target.value)
-              setShowAccessoryDropdown(true)
-            }}
+            onChange={(e) => setAccessorySearch(e.target.value)}
             onFocus={() => setShowAccessoryDropdown(true)}
-            placeholder="Search for accessories..."
+            placeholder="Search optional accessories..."
             className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
           />
           
           {showAccessoryDropdown && (
-            <div className="absolute z-50 w-full bg-surface border border-highlight-med rounded-md mt-1 max-h-60 overflow-y-auto shadow-lg">
+            <div className="absolute z-50 w-full mt-1 bg-surface border border-highlight-med rounded shadow-lg max-h-60 overflow-y-auto">
               {filteredAccessories.length > 0 ? (
                 filteredAccessories.map(accessory => (
                   <div
                     key={accessory.accessory_id}
                     onClick={() => addOptionalAccessory(accessory)}
-                    className="p-3 hover:bg-overlay cursor-pointer border-b border-highlight-low last:border-b-0"
+                    className="p-3 hover:bg-highlight-low cursor-pointer border-b border-highlight-low last:border-0"
                   >
                     <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-medium text-text">{accessory.accessory_name}</div>
-                        <div className="text-xs text-muted">{accessory.description}</div>
-                        {accessory.type_name && (
-                          <div className="text-xs text-subtle">For: {accessory.type_name}</div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-xs px-2 py-1 rounded ${
-                          accessory.is_consumable ? 'bg-yellow/20 text-yellow' : 'bg-blue/20 text-blue'
-                        }`}>
-                          {accessory.is_consumable ? 'Consumable' : 'Reusable'}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-text">{accessory.accessory_name}</span>
+                          <span className="text-sm text-subtle">({accessory.accessory_code})</span>
+                          {accessory.is_consumable && (
+                            <span className="text-xs bg-yellow/20 text-yellow px-2 py-1 rounded">CONSUMABLE</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-subtle mt-1">{accessory.description}</div>
+                        <div className="text-xs text-subtle mt-1">
+                          Default: {accessory.default_quantity} {accessory.unit_of_measure}
                         </div>
                       </div>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="p-3 text-subtle">No accessories found</div>
+                <div className="p-3 text-subtle">No optional accessories found</div>
               )}
             </div>
           )}
         </div>
+
+        {/* Selected Optional Accessories */}
+        {accessorySelections.filter(as => as.accessory_type === 'optional').length > 0 && (
+          <div className="mt-4">
+            <h4 className="text-sm font-medium text-text mb-2">Selected Optional Accessories</h4>
+            <div className="space-y-2">
+              {accessorySelections.filter(as => as.accessory_type === 'optional').map(selection => {
+                const accessory = accessories.find(a => a.accessory_id === selection.accessory_id)
+                return (
+                  <div key={selection.accessory_id} className="flex items-center justify-between bg-blue/10 p-3 rounded">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">📦</span>
+                      <div>
+                        <span className="font-medium text-text">{selection.accessory_name}</span>
+                        {accessory?.is_consumable && (
+                          <span className="text-xs bg-yellow/20 text-yellow px-2 py-1 rounded ml-2">CONSUMABLE</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm text-subtle">Qty:</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={selection.quantity}
+                        onChange={(e) => updateAccessoryQuantity(selection.accessory_id, Number(e.target.value))}
+                        className="w-16 p-1 bg-overlay border border-highlight-med rounded text-center text-text"
+                      />
+                      <span className="text-sm text-subtle">{accessory?.unit_of_measure || 'item(s)'}</span>
+                      <button
+                        onClick={() => updateAccessoryQuantity(selection.accessory_id, 0)}
+                        className="text-red hover:text-love"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Selected Optional Accessories */}
-      {accessorySelections.filter(as => as.accessory_type === 'optional').length > 0 && (
-        <div>
-          <h3 className="font-medium text-text mb-3">Optional Accessories</h3>
-          <div className="space-y-2">
-            {accessorySelections.filter(as => as.accessory_type === 'optional').map(selection => (
-              <div key={selection.accessory_id} className="flex items-center justify-between bg-blue/10 p-3 rounded">
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">📦</span>
-                  <span className="font-medium text-text">{selection.accessory_name}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <label className="text-sm text-subtle">Qty:</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={selection.quantity}
-                    onChange={(e) => updateAccessoryQuantity(selection.accessory_id, Number(e.target.value))}
-                    className="w-16 p-1 bg-overlay border border-highlight-med rounded text-center text-text"
-                  />
-                  <button
-                    onClick={() => updateAccessoryQuantity(selection.accessory_id, 0)}
-                    className="text-red hover:text-love"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Equipment Summary */}
-      {equipmentSelections.length > 0 && (
-        <div className="mt-6 p-4 bg-overlay rounded">
+      {/* Summary */}
+      {(equipmentSelections.length > 0 || accessorySelections.length > 0) && (
+        <div className="bg-overlay p-4 rounded">
           <h3 className="font-medium text-text mb-2">Selection Summary</h3>
-          <div className="text-sm text-subtle">
-            <div>Equipment Items: {equipmentSelections.length}</div>
-            <div>Total Accessories: {accessorySelections.length}</div>
-            <div>Default Accessories: {accessorySelections.filter(as => as.accessory_type === 'default').length}</div>
-            <div>Optional Accessories: {accessorySelections.filter(as => as.accessory_type === 'optional').length}</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <span className="text-subtle">Equipment Items:</span>
+              <div className="text-text font-medium">{equipmentSelections.length}</div>
+            </div>
+            <div>
+              <span className="text-subtle">Total Equipment Units:</span>
+              <div className="text-text font-medium">
+                {equipmentSelections.reduce((sum, eq) => sum + eq.quantity, 0)}
+              </div>
+            </div>
+            <div>
+              <span className="text-subtle">Accessories:</span>
+              <div className="text-text font-medium">
+                {accessorySelections.filter(as => as.accessory_type === 'default').length} default, {' '}
+                {accessorySelections.filter(as => as.accessory_type === 'optional').length} optional
+              </div>
+            </div>
           </div>
         </div>
       )}

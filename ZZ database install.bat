@@ -73,7 +73,7 @@ echo ✓ PostgreSQL container started
 
 :: Wait for PostgreSQL to be ready
 echo.
-echo Waiting 10 seconds for PostgreSQL to start...
+echo Waiting 5 seconds for PostgreSQL to start...
 timeout /t 5 /nobreak >nul
 
 :: Check if PostgreSQL is ready now

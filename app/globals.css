@@ -4,24 +4,27 @@
 
 @layer base {
   :root {
-    --color-base: #232136;
-    --color-surface: #2a273f;
-    --color-overlay: #393552;
-    --color-muted: #6e6a86;
-    --color-subtle: #908caa;
-    --color-text: #e0def4;
-    --color-love: #eb6f92;
-    --color-gold: #f6c177;
-    --color-rose: #ea9a97;
-    --color-pine: #3e8fb0;
-    --color-foam: #9ccfd8;
-    --color-iris: #c4a7e7;
-    --color-highlight-low: #21202e;
-    --color-highlight-med: #403d52;
-    --color-highlight-high: #524f67;
-    --color-green: #81b29a;
-    --color-red: #ef233c;
-    --color-blue: #2a9d8f;
-    --color-yellow: #e9c46a;
+    --color-base: #1c1f24;          /* Very dark slate background */
+    --color-surface: #23272e;       /* Slightly lighter slate */
+    --color-overlay: #2b2f36;       /* Overlay box backgrounds */
+    --color-muted: #5c6370;         /* Muted grey for secondary text */
+    --color-subtle: #7f848e;        /* Subtler highlight text */
+    --color-text: #dcdfe4;          /* Off-white/slate text */
+    
+    --color-love: #a54242;          /* Rusty slate red */
+    --color-gold: #c8ae7d;          /* Weathered bronze */
+    --color-rose: #a67873;          /* Dusty rose rock tone */
+    --color-pine: #4c6e71;          /* Mossy slate-green */
+    --color-foam: #7f9c9f;          /* Light grey-cyan */
+    --color-iris: #9699b3;          /* Muted slate lavender */
+
+    --color-highlight-low: #202328; /* Hover backgrounds */
+    --color-highlight-med: #3c4048; /* Active or selection */
+    --color-highlight-high: #4e525a;/* Elevated or pressed UI */
+    
+    --color-green: #6a9955;         /* Slightly mossy green */
+    --color-red: #bf616a;           /* Subdued warning red */
+    --color-blue: #5e81ac;          /* Slate blue */
+    --color-yellow: #d8a657;        /* Ochre tone */
   }
 }

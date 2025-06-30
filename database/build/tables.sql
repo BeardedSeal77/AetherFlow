@@ -136,7 +136,7 @@ CREATE TABLE core.equipment_types (
     type_name VARCHAR(255) NOT NULL,
     description TEXT,
     specifications TEXT,
-    default_accessories TEXT,
+    -- Removed default_accessories column as requested
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -175,27 +175,50 @@ CREATE TABLE core.equipment (
 COMMENT ON TABLE core.equipment IS 'Individual equipment units with unique asset codes (used in Phase 2 allocation)';
 COMMENT ON COLUMN core.equipment.asset_code IS 'Unique asset identifier (R1001, P1002, etc.)';
 
+
 -- =============================================================================
 -- ACCESSORIES TABLE
 -- =============================================================================
 CREATE TABLE core.accessories (
     id SERIAL PRIMARY KEY,
-    equipment_type_id INTEGER,
     accessory_name VARCHAR(255) NOT NULL,
-    accessory_type VARCHAR(20) DEFAULT 'default' CHECK (accessory_type IN ('default', 'optional')),
+    accessory_code VARCHAR(50) UNIQUE NOT NULL, -- PETROL-4S, HELMET, CORD-20M, etc.
     description TEXT,
     is_consumable BOOLEAN DEFAULT false,
+    unit_of_measure VARCHAR(20) DEFAULT 'item', -- litres, kg, metres, item, etc.
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
     created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (equipment_type_id) REFERENCES core.equipment_types(id),
     FOREIGN KEY (created_by) REFERENCES core.employees(id)
 );
 
-COMMENT ON TABLE core.accessories IS 'Accessories available for equipment types';
-COMMENT ON COLUMN core.accessories.accessory_type IS 'default = included with equipment, optional = customer choice';
-COMMENT ON COLUMN core.accessories.billing_method IS 'daily = track hire period, consumption = track quantity used, fixed = one-time charge';
+COMMENT ON TABLE core.accessories IS 'Master list of all available accessories - not tied to specific equipment types';
+COMMENT ON COLUMN core.accessories.accessory_code IS 'Unique code for the accessory (PETROL-4S, HELMET, etc.)';
 COMMENT ON COLUMN core.accessories.is_consumable IS 'true for items like fuel, oil, cutting discs that get used up';
+COMMENT ON COLUMN core.accessories.unit_of_measure IS 'How this accessory is measured: litres, kg, metres, item, etc.';
+
+
+-- =============================================================================
+-- EQUIPMENT ACCESSORIES RELATIONSHIP - NEW TABLE
+-- =============================================================================
+CREATE TABLE core.equipment_accessories (
+    id SERIAL PRIMARY KEY,
+    equipment_type_id INTEGER NOT NULL,
+    accessory_id INTEGER NOT NULL,
+    accessory_type VARCHAR(20) DEFAULT 'default' CHECK (accessory_type IN ('default', 'optional')),
+    default_quantity DECIMAL(8,2) NOT NULL DEFAULT 1,
+    created_by INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (equipment_type_id) REFERENCES core.equipment_types(id) ON DELETE CASCADE,
+    FOREIGN KEY (accessory_id) REFERENCES core.accessories(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES core.employees(id),
+    UNIQUE(equipment_type_id, accessory_id) -- Prevent duplicate accessory assignments
+);
+
+COMMENT ON TABLE core.equipment_accessories IS 'Links equipment types to their default and optional accessories with quantities';
+COMMENT ON COLUMN core.equipment_accessories.accessory_type IS 'default = automatically included, optional = customer choice';
+COMMENT ON COLUMN core.equipment_accessories.default_quantity IS 'Default quantity of this accessory for this equipment type (e.g., 2 litres of petrol)';
+
 
 -- =============================================================================
 -- INTERACTIONS TABLE (unchanged - Layer 1)
@@ -284,12 +307,12 @@ COMMENT ON COLUMN interactions.interaction_equipment.allocation_status IS 'Track
 -- =============================================================================
 -- INTERACTION ACCESSORIES JUNCTION (updated with allocation linking)
 -- =============================================================================
-CREATE TABLE interactions.interaction_accessories (
+CCREATE TABLE interactions.interaction_accessories (
     id SERIAL PRIMARY KEY,
     interaction_id INTEGER NOT NULL,
     accessory_id INTEGER NOT NULL,
     equipment_allocation_id INTEGER, -- Links to specific equipment allocation if accessory is tied to specific unit
-    quantity DECIMAL(8,2) NOT NULL DEFAULT 1, -- DECIMAL for litres, kg, etc.
+    quantity DECIMAL(8,2) NOT NULL DEFAULT 1,
     accessory_type VARCHAR(20) DEFAULT 'default' CHECK (accessory_type IN ('default', 'optional', 'custom')),
     hire_start_date DATE,  -- Only for non-consumable accessories
     hire_end_date DATE,    -- Only for non-consumable accessories
@@ -311,8 +334,7 @@ CREATE TABLE interactions.interaction_accessories (
 
 COMMENT ON TABLE interactions.interaction_accessories IS 'Accessories for interactions - can be linked to specific equipment allocations';
 COMMENT ON COLUMN interactions.interaction_accessories.equipment_allocation_id IS 'Links accessory to specific equipment unit when relevant';
-
-SET search_path TO core, interactions, tasks, security, system, public;
+COMMENT ON COLUMN interactions.interaction_accessories.quantity IS 'Actual quantity hired/used for this interaction';
 
 -- =============================================================================
 -- USER TASKBOARD TABLE (unchanged - Layer 3)
