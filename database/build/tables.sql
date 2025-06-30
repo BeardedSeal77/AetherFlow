@@ -42,8 +42,10 @@ CREATE TABLE core.employees (
     hire_date DATE NOT NULL DEFAULT CURRENT_DATE,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended', 'terminated')),
     last_login TIMESTAMP WITH TIME ZONE,
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES core.employees(id)
 );
 
 COMMENT ON TABLE core.employees IS 'Employee master data - also serves as system users';
@@ -87,8 +89,10 @@ CREATE TABLE core.contacts (
     is_primary_contact BOOLEAN NOT NULL DEFAULT false,
     is_billing_contact BOOLEAN NOT NULL DEFAULT false,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES core.employees(id),
     FOREIGN KEY (customer_id) REFERENCES core.customers(id) ON DELETE CASCADE
 );
 
@@ -114,8 +118,10 @@ CREATE TABLE core.sites (
     site_contact_phone VARCHAR(20),
     delivery_instructions TEXT,
     is_active BOOLEAN NOT NULL DEFAULT true,
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES core.employees(id),
     FOREIGN KEY (customer_id) REFERENCES core.customers(id) ON DELETE CASCADE
 );
 
@@ -132,8 +138,10 @@ CREATE TABLE core.equipment_types (
     specifications TEXT,
     default_accessories TEXT,
     is_active BOOLEAN NOT NULL DEFAULT true,
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES core.employees(id)
 );
 
 COMMENT ON TABLE core.equipment_types IS 'Generic equipment categories/types for rental (used in Phase 1 booking)';
@@ -157,9 +165,11 @@ CREATE TABLE core.equipment (
     last_service_date DATE,
     next_service_due DATE,
     notes TEXT,
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (equipment_type_id) REFERENCES core.equipment_types(id)
+    FOREIGN KEY (equipment_type_id) REFERENCES core.equipment_types(id),
+    FOREIGN KEY (created_by) REFERENCES core.employees(id)
 );
 
 COMMENT ON TABLE core.equipment IS 'Individual equipment units with unique asset codes (used in Phase 2 allocation)';
@@ -173,8 +183,6 @@ CREATE TABLE core.accessories (
     equipment_type_id INTEGER,
     accessory_name VARCHAR(255) NOT NULL,
     accessory_type VARCHAR(20) DEFAULT 'default' CHECK (accessory_type IN ('default', 'optional')),
-    billing_method VARCHAR(20) DEFAULT 'daily' CHECK (billing_method IN ('daily', 'consumption', 'fixed')),
-    quantity INTEGER DEFAULT 1,
     description TEXT,
     is_consumable BOOLEAN DEFAULT false,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
@@ -205,9 +213,11 @@ CREATE TABLE interactions.interactions (
     contact_method VARCHAR(50) NOT NULL CHECK (contact_method IN 
         ('phone', 'email', 'in_person', 'whatsapp', 'online', 'other')),
     notes TEXT,
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP WITH TIME ZONE,
+    FOREIGN KEY (created_by) REFERENCES core.employees(id),
     FOREIGN KEY (customer_id) REFERENCES core.customers(id),
     FOREIGN KEY (contact_id) REFERENCES core.contacts(id),
     FOREIGN KEY (employee_id) REFERENCES core.employees(id)
@@ -226,9 +236,11 @@ CREATE TABLE interactions.interaction_equipment_types (
     booking_status VARCHAR(20) NOT NULL DEFAULT 'booked' 
         CHECK (booking_status IN ('booked', 'allocated', 'cancelled')),
     booking_notes TEXT,
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (interaction_id) REFERENCES interactions.interactions(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES core.employees(id),
     FOREIGN KEY (equipment_type_id) REFERENCES core.equipment_types(id)
 );
 
@@ -255,14 +267,14 @@ CREATE TABLE interactions.interaction_equipment (
     quality_check_notes TEXT,
     quality_checked_by INTEGER,
     quality_checked_at TIMESTAMP WITH TIME ZONE,
-    allocated_by INTEGER NOT NULL,
     allocated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (interaction_id) REFERENCES interactions.interactions(id) ON DELETE CASCADE,
     FOREIGN KEY (equipment_id) REFERENCES core.equipment(id),
     FOREIGN KEY (equipment_type_booking_id) REFERENCES interactions.interaction_equipment_types(id),
     FOREIGN KEY (quality_checked_by) REFERENCES core.employees(id),
-    FOREIGN KEY (allocated_by) REFERENCES core.employees(id)
+    FOREIGN KEY (created_by) REFERENCES core.employees(id)
 );
 
 COMMENT ON TABLE interactions.interaction_equipment IS 'Phase 2: Specific equipment allocation - assigns actual equipment units with quality control';
@@ -288,11 +300,13 @@ CREATE TABLE interactions.interaction_accessories (
     quality_check_notes TEXT,
     quality_checked_by INTEGER,
     quality_checked_at TIMESTAMP WITH TIME ZONE,
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (interaction_id) REFERENCES interactions.interactions(id) ON DELETE CASCADE,
     FOREIGN KEY (accessory_id) REFERENCES core.accessories(id),
     FOREIGN KEY (equipment_allocation_id) REFERENCES interactions.interaction_equipment(id),
-    FOREIGN KEY (quality_checked_by) REFERENCES core.employees(id)
+    FOREIGN KEY (quality_checked_by) REFERENCES core.employees(id),
+    FOREIGN KEY (created_by) REFERENCES core.employees(id)
 );
 
 COMMENT ON TABLE interactions.interaction_accessories IS 'Accessories for interactions - can be linked to specific equipment allocations';
@@ -322,11 +336,13 @@ CREATE TABLE tasks.user_taskboard (
     completion_notes TEXT,
     started_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
+    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (interaction_id) REFERENCES interactions.interactions(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_task_id) REFERENCES tasks.user_taskboard(id),
-    FOREIGN KEY (assigned_to) REFERENCES core.employees(id)
+    FOREIGN KEY (assigned_to) REFERENCES core.employees(id),
+    FOREIGN KEY (created_by) REFERENCES core.employees(id)
 );
 
 COMMENT ON TABLE tasks.user_taskboard IS 'Layer 3: User tasks for office staff (hire controllers, accounts team)';

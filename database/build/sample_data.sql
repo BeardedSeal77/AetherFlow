@@ -52,27 +52,21 @@ INSERT INTO core.equipment (equipment_type_id, asset_code, serial_number, model,
 (1, 'R1001', 'WP1550-2023-001', 'Wacker WP1550', 'excellent', 'available'),
 (1, 'R1002', 'WP1550-2023-002', 'Wacker WP1550', 'good', 'available'),
 (1, 'R1003', 'WP1550-2022-003', 'Wacker WP1550', 'good', 'available'),
-
 -- Rammers (2-stroke)
 (2, 'R2001', 'BS50-2024-001', 'Wacker BS50-2', 'excellent', 'available'),
 (2, 'R2002', 'BS50-2024-002', 'Wacker BS50-2', 'good', 'available'),
-
 -- Plate compactors
 (3, 'P1001', 'DPU2540-2023-001', 'Wacker DPU2540', 'excellent', 'available'),
 (3, 'P1002', 'DPU2540-2023-002', 'Wacker DPU2540', 'good', 'available'),
-
 -- Concrete pokers
 (4, 'CP001', 'IEC25-2023-001', 'Inmesol IEC25', 'excellent', 'available'),
 (4, 'CP002', 'IEC25-2023-002', 'Inmesol IEC25', 'good', 'available'),
-
 -- Drive units
 (5, 'DU001', 'M5000-2023-001', 'Inmesol M5000', 'excellent', 'available'),
 (5, 'DU002', 'M5000-2022-001', 'Inmesol M5000', 'good', 'available'),
-
 -- Grinders
 (6, 'G1001', 'AG250-2024-001', 'Bosch AG250', 'excellent', 'available'),
 (6, 'G1002', 'AG250-2024-002', 'Bosch AG250', 'good', 'available'),
-
 -- Generators
 (7, 'GEN001', 'EU25-2023-001', 'Honda EU25i', 'excellent', 'available'),
 (7, 'GEN002', 'EU25-2023-002', 'Honda EU25i', 'good', 'available');
@@ -83,7 +77,6 @@ INSERT INTO core.accessories (equipment_type_id, accessory_name, accessory_type,
 (1, 'Petrol', 'default', 'consumption', 2, '4-stroke petrol', true, 1),
 (2, 'Petrol', 'default', 'consumption', 2, '2-stroke petrol mix', true, 1),
 (7, 'Petrol', 'default', 'consumption', 5, 'Unleaded petrol for generator', true, 1),
-
 -- Safety equipment (default with all equipment)
 (1, 'Safety helmet', 'default', 'fixed', 1, 'Hard hat', false, 1),
 (2, 'Safety helmet', 'default', 'fixed', 1, 'Hard hat', false, 1),
@@ -92,13 +85,10 @@ INSERT INTO core.accessories (equipment_type_id, accessory_name, accessory_type,
 (5, 'Safety helmet', 'default', 'fixed', 1, 'Hard hat', false, 1),
 (6, 'Safety helmet', 'default', 'fixed', 1, 'Hard hat', false, 1),
 (7, 'Safety helmet', 'default', 'fixed', 1, 'Hard hat', false, 1),
-
 -- Generator specific accessories
 (7, 'Extension cord', 'default', 'fixed', 1, '20m heavy duty extension cord', false, 1),
-
 -- Grinder specific accessories
 (6, 'Cutting disc', 'optional', 'consumption', 2, '250mm concrete cutting disc', true, 1),
-
 -- Engine oil for 4-stroke equipment
 (1, 'Engine oil', 'optional', 'consumption', 1, '4-stroke engine oil', true, 1),
 (7, 'Engine oil', 'optional', 'consumption', 1, '4-stroke engine oil', true, 1);

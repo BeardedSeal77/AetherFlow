@@ -108,6 +108,7 @@ SET search_path TO core, interactions, tasks, system, public;
 
 \i database/procedures/extras/sp_calculate_hire_pricing.sql
 \i database/procedures/extras/sp_get_hire_list.sql
+\i database/procedures/extras/sp_get_interactions_by_date.sql
 \i database/procedures/extras/sp_get_interaction_activity_log.sql
 \i database/procedures/utility/sp_get_hire_dashboard_summary.sql
 

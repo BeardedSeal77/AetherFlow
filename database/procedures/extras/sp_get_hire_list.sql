@@ -4,8 +4,8 @@
 SET search_path TO core, interactions, tasks, system, public;
 
 CREATE OR REPLACE FUNCTION sp_get_hire_list(
-    p_date_from DATE DEFAULT NULL,  -- Changed: NULL instead of calculated default
-    p_date_to DATE DEFAULT NULL,    -- Changed: NULL instead of calculated default
+    p_date_from DATE DEFAULT NULL,
+    p_date_to DATE DEFAULT NULL,
     p_status_filter VARCHAR(50) DEFAULT NULL,
     p_customer_filter VARCHAR(255) DEFAULT NULL,
     p_search_term VARCHAR(255) DEFAULT NULL,
@@ -20,7 +20,7 @@ RETURNS TABLE(
     interaction_status VARCHAR(50),
     equipment_summary TEXT,
     delivery_date DATE,
-    delivery_time TIME,
+    delivery_time TEXT,  -- Changed from TIME to TEXT to fix JSON serialization
     allocation_status TEXT,
     qc_status TEXT,
     driver_status VARCHAR(50),
@@ -37,16 +37,17 @@ BEGIN
             (ct.first_name || ' ' || ct.last_name) AS contact_name,
             i.status,
             -- Equipment summary
-            (SELECT string_agg(
-                et.type_code || ' (' || iet.quantity || ')',
-                ', ' ORDER BY et.type_name
-            )
-            FROM interactions.interaction_equipment_types iet
-            JOIN core.equipment_types et ON iet.equipment_type_id = et.id
-            WHERE iet.interaction_id = i.id
-            ) AS equipment_summary,
+            COALESCE((
+                SELECT string_agg(
+                    et.type_code || ' (' || iet.quantity || ')',
+                    ', ' ORDER BY et.type_name
+                )
+                FROM interactions.interaction_equipment_types iet
+                JOIN core.equipment_types et ON iet.equipment_type_id = et.id
+                WHERE iet.interaction_id = i.id
+            ), 'No equipment') AS equipment_summary,
             dt.scheduled_date,
-            dt.scheduled_time,
+            COALESCE(dt.scheduled_time::TEXT, '') AS scheduled_time,  -- Convert TIME to TEXT
             -- Allocation status
             CASE 
                 WHEN COUNT(iet.id) = 0 THEN 'No equipment'
@@ -67,7 +68,7 @@ BEGIN
                     THEN 'QC issues'
                 ELSE 'QC not started'
             END AS qc_status,
-            dt.status AS driver_status,
+            COALESCE(dt.status, 'no_task') AS driver_status,
             i.created_at,
             COUNT(*) OVER() AS total_count
         FROM interactions.interactions i
@@ -110,5 +111,8 @@ BEGIN
     FROM hire_data hd;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+COMMENT ON FUNCTION sp_get_hire_list IS 'Get paginated list of hire interactions with filters - FIXED JSON serialization issues';
+
 
 COMMENT ON FUNCTION sp_get_hire_list IS 'Get paginated list of hire interactions with filters - FIXED version that handles NULL dates correctly';

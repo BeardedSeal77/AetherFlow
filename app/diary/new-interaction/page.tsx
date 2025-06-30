@@ -1,7 +1,14 @@
+// app/diary/new-interaction/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+
+// Import the reusable components
+import InteractionTypeSelector, { INTERACTION_TYPES, InteractionType } from '@/components/interaction/InteractionTypeSelector'
+import CustomerSelection from '@/components/interaction/CustomerSelection'
+import EquipmentSelection from '@/components/interaction/EquipmentSelection'
+import DeliveryInformation from '@/components/interaction/DeliveryInformation'
 
 interface Customer {
   customer_id: number
@@ -37,27 +44,6 @@ interface Site {
   delivery_instructions: string
 }
 
-interface EquipmentType {
-  equipment_type_id: number
-  type_code: string
-  type_name: string
-  description: string
-  total_units: number
-  available_units: number
-}
-
-interface Accessory {
-  accessory_id: number
-  equipment_type_id?: number
-  accessory_name: string
-  accessory_type: 'default' | 'optional'
-  billing_method: string
-  default_quantity: number
-  description: string
-  is_consumable: boolean
-  type_name?: string
-}
-
 interface EquipmentSelection {
   equipment_type_id: number
   quantity: number
@@ -74,31 +60,30 @@ interface AccessorySelection {
 
 export default function NewInteractionPage() {
   const router = useRouter()
-  const [interactionType, setInteractionType] = useState<string>('')
+  
+  // Interaction type and progress
+  const [selectedType, setSelectedType] = useState<string>('')
+  const [currentStep, setCurrentStep] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   
-  // Hire-specific state
-  const [customers, setCustomers] = useState<Customer[]>([])
+  // Customer information
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [contacts, setContacts] = useState<Contact[]>([])
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
-  const [sites, setSites] = useState<Site[]>([])
   const [selectedSite, setSelectedSite] = useState<Site | null>(null)
   
-  const [equipmentTypes, setEquipmentTypes] = useState<EquipmentType[]>([])
-  const [equipmentMode, setEquipmentMode] = useState<'generic' | 'specific'>('generic')
+  // Equipment information (for hire and other equipment-requiring interactions)
   const [equipmentSelections, setEquipmentSelections] = useState<EquipmentSelection[]>([])
-  
-  const [accessories, setAccessories] = useState<Accessory[]>([])
   const [accessorySelections, setAccessorySelections] = useState<AccessorySelection[]>([])
   
+  // Delivery/scheduling information
   const [deliveryDate, setDeliveryDate] = useState<string>('')
   const [deliveryTime, setDeliveryTime] = useState<string>('09:00')
+  const [hireStartDate, setHireStartDate] = useState<string>('')
+  const [hireEndDate, setHireEndDate] = useState<string>('')
   const [contactMethod, setContactMethod] = useState<string>('phone')
   const [notes, setNotes] = useState<string>('')
-  
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     // Check if user is logged in
@@ -117,195 +102,116 @@ export default function NewInteractionPage() {
       })
   }, [router])
 
-  useEffect(() => {
-    if (interactionType === 'hire') {
-      loadHireData()
-    }
-  }, [interactionType])
+  // Get the current interaction type configuration
+  const getSelectedTypeConfig = (): InteractionType | null => {
+    return INTERACTION_TYPES.find(type => type.key === selectedType) || null
+  }
 
-  const loadHireData = async () => {
-    try {
-      // Load customers and equipment types
-      const [customersRes, equipmentRes, accessoriesRes] = await Promise.all([
-        fetch('/api/hire/customers'),
-        fetch('/api/hire/equipment/types'),
-        fetch('/api/hire/equipment/accessories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ equipment_type_ids: [] })
-        })
-      ])
+  // Calculate total steps based on interaction type
+  const getTotalSteps = (): number => {
+    const typeConfig = getSelectedTypeConfig()
+    if (!typeConfig) return 1
+    
+    let steps = 2 // Type selection + Customer selection
+    if (typeConfig.requiresEquipment) steps++
+    if (typeConfig.requiresDelivery) steps++
+    steps++ // Review & Submit
+    return steps
+  }
 
-      const customersData = await customersRes.json()
-      const equipmentData = await equipmentRes.json()
-      const accessoriesData = await accessoriesRes.json()
-
-      if (customersData.success) setCustomers(customersData.data)
-      if (equipmentData.success) setEquipmentTypes(equipmentData.data)
-      if (accessoriesData.success) setAccessories(accessoriesData.data)
-
-    } catch (err) {
-      console.error('Failed to load hire data:', err)
-      setError('Failed to load hire data')
+  // Get step names
+  const getStepName = (step: number): string => {
+    const typeConfig = getSelectedTypeConfig()
+    if (!typeConfig) return 'Select Type'
+    
+    switch (step) {
+      case 1: return 'Interaction Type'
+      case 2: return 'Customer Information'
+      case 3: 
+        if (typeConfig.requiresEquipment) return 'Equipment Selection'
+        if (typeConfig.requiresDelivery) return 'Scheduling'
+        return 'Review & Submit'
+      case 4:
+        if (typeConfig.requiresEquipment && typeConfig.requiresDelivery) return 'Delivery Information'
+        return 'Review & Submit'
+      case 5: return 'Review & Submit'
+      default: return 'Unknown Step'
     }
   }
 
-  const handleCustomerChange = async (customerId: number) => {
-    const customer = customers.find(c => c.customer_id === customerId)
-    setSelectedCustomer(customer || null)
+  // Check if current step is valid/complete
+  const isStepComplete = (step: number): boolean => {
+    const typeConfig = getSelectedTypeConfig()
+    
+    switch (step) {
+      case 1: return !!selectedType
+      case 2: return !!(selectedCustomer && selectedContact && (!typeConfig?.requiresDelivery || selectedSite))
+      case 3:
+        if (typeConfig?.requiresEquipment) return equipmentSelections.length > 0
+        if (typeConfig?.requiresDelivery) return !!deliveryDate
+        return true
+      case 4:
+        if (typeConfig?.requiresEquipment && typeConfig?.requiresDelivery) return !!deliveryDate
+        return true
+      default: return false
+    }
+  }
+
+  // Navigation functions
+  const goToNextStep = () => {
+    if (currentStep < getTotalSteps()) {
+      setCurrentStep(currentStep + 1)
+    }
+  }
+
+  const goToPreviousStep = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1)
+    }
+  }
+
+  const goToStep = (step: number) => {
+    if (step >= 1 && step <= getTotalSteps()) {
+      setCurrentStep(step)
+    }
+  }
+
+  // Reset form when interaction type changes
+  const handleTypeSelect = (type: string) => {
+    setSelectedType(type)
+    setSelectedCustomer(null)
     setSelectedContact(null)
     setSelectedSite(null)
-    setContacts([])
-    setSites([])
-
-    if (customer) {
-      try {
-        const [contactsRes, sitesRes] = await Promise.all([
-          fetch(`/api/hire/customers/${customerId}/contacts`),
-          fetch(`/api/hire/customers/${customerId}/sites`)
-        ])
-
-        const contactsData = await contactsRes.json()
-        const sitesData = await sitesRes.json()
-
-        if (contactsData.success) setContacts(contactsData.data)
-        if (sitesData.success) setSites(sitesData.data)
-
-      } catch (err) {
-        console.error('Failed to load customer details:', err)
-      }
-    }
+    setEquipmentSelections([])
+    setAccessorySelections([])
+    setDeliveryDate('')
+    setDeliveryTime('09:00')
+    setHireStartDate('')
+    setHireEndDate('')
+    setNotes('')
+    setCurrentStep(2) // Move to customer selection
   }
 
-  const handleContactChange = (contactId: number) => {
-    const contact = contacts.find(c => c.contact_id === contactId)
-    setSelectedContact(contact || null)
-  }
-
-  const handleSiteChange = (siteId: number) => {
-    const site = sites.find(s => s.site_id === siteId)
-    setSelectedSite(site || null)
-  }
-
-  const addEquipmentSelection = (equipmentTypeId: number) => {
-    const equipmentType = equipmentTypes.find(et => et.equipment_type_id === equipmentTypeId)
-    if (equipmentType) {
-      const existing = equipmentSelections.find(es => es.equipment_type_id === equipmentTypeId)
-      if (existing) {
-        setEquipmentSelections(prev => 
-          prev.map(es => 
-            es.equipment_type_id === equipmentTypeId 
-              ? { ...es, quantity: es.quantity + 1 }
-              : es
-          )
-        )
-      } else {
-        setEquipmentSelections(prev => [...prev, {
-          equipment_type_id: equipmentTypeId,
-          quantity: 1,
-          type_name: equipmentType.type_name,
-          type_code: equipmentType.type_code
-        }])
-      }
-      
-      // Calculate auto accessories
-      calculateAutoAccessories([...equipmentSelections, { equipment_type_id: equipmentTypeId, quantity: 1 }])
-    }
-  }
-
-  const updateEquipmentQuantity = (equipmentTypeId: number, quantity: number) => {
-    if (quantity <= 0) {
-      setEquipmentSelections(prev => prev.filter(es => es.equipment_type_id !== equipmentTypeId))
-    } else {
-      setEquipmentSelections(prev => 
-        prev.map(es => 
-          es.equipment_type_id === equipmentTypeId 
-            ? { ...es, quantity }
-            : es
-        )
-      )
-    }
-    
-    // Recalculate auto accessories
-    const updatedSelections = equipmentSelections.map(es => 
-      es.equipment_type_id === equipmentTypeId ? { ...es, quantity } : es
-    ).filter(es => es.quantity > 0)
-    calculateAutoAccessories(updatedSelections)
-  }
-
-  const calculateAutoAccessories = async (selections: EquipmentSelection[]) => {
-    if (selections.length === 0) {
-      setAccessorySelections([])
+  // Submit the interaction
+  const handleSubmit = async () => {
+    const typeConfig = getSelectedTypeConfig()
+    if (!typeConfig || !selectedCustomer || !selectedContact) {
+      setError('Please complete all required information')
       return
     }
 
-    try {
-      const response = await fetch('/api/hire/equipment/auto-accessories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ equipment_selections: selections })
-      })
-
-      const data = await response.json()
-      if (data.success) {
-        const autoAccessories = data.data.map((acc: any) => ({
-          accessory_id: acc.accessory_id,
-          quantity: acc.total_quantity,
-          accessory_type: 'default',
-          accessory_name: acc.accessory_name
-        }))
-        
-        // Keep existing optional accessories, replace defaults
-        setAccessorySelections(prev => [
-          ...prev.filter(as => as.accessory_type !== 'default'),
-          ...autoAccessories
-        ])
-      }
-    } catch (err) {
-      console.error('Failed to calculate auto accessories:', err)
+    if (typeConfig.requiresDelivery && !selectedSite) {
+      setError('Please select a delivery site')
+      return
     }
-  }
 
-  const addOptionalAccessory = (accessoryId: number) => {
-    const accessory = accessories.find(a => a.accessory_id === accessoryId)
-    if (accessory) {
-      const existing = accessorySelections.find(as => as.accessory_id === accessoryId)
-      if (existing) {
-        setAccessorySelections(prev => 
-          prev.map(as => 
-            as.accessory_id === accessoryId 
-              ? { ...as, quantity: as.quantity + (accessory.is_consumable ? 5 : 1) }
-              : as
-          )
-        )
-      } else {
-        setAccessorySelections(prev => [...prev, {
-          accessory_id: accessoryId,
-          quantity: accessory.default_quantity || (accessory.is_consumable ? 5 : 1),
-          accessory_type: 'optional',
-          accessory_name: accessory.accessory_name
-        }])
-      }
+    if (typeConfig.requiresEquipment && equipmentSelections.length === 0) {
+      setError('Please select at least one equipment item')
+      return
     }
-  }
 
-  const updateAccessoryQuantity = (accessoryId: number, quantity: number) => {
-    if (quantity <= 0) {
-      setAccessorySelections(prev => prev.filter(as => as.accessory_id !== accessoryId))
-    } else {
-      setAccessorySelections(prev => 
-        prev.map(as => 
-          as.accessory_id === accessoryId 
-            ? { ...as, quantity }
-            : as
-        )
-      )
-    }
-  }
-
-  const handleSubmit = async () => {
-    if (!selectedCustomer || !selectedContact || !selectedSite || equipmentSelections.length === 0 || !deliveryDate) {
-      setError('Please complete all required fields')
+    if (typeConfig.requiresDelivery && !deliveryDate) {
+      setError('Please select a delivery date')
       return
     }
 
@@ -313,36 +219,62 @@ export default function NewInteractionPage() {
     setError(null)
 
     try {
-      const hireData = {
+      // Build the interaction data based on type
+      const interactionData: any = {
+        interaction_type: selectedType,
         customer_id: selectedCustomer.customer_id,
         contact_id: selectedContact.contact_id,
-        site_id: selectedSite.site_id,
-        equipment_selections: equipmentSelections,
-        accessory_selections: accessorySelections,
-        delivery_date: deliveryDate,
-        delivery_time: deliveryTime || null,
         contact_method: contactMethod,
         notes: notes
       }
 
-      const response = await fetch('/api/hire/hires', {
+      // Add type-specific data
+      if (typeConfig.requiresDelivery && selectedSite) {
+        interactionData.site_id = selectedSite.site_id
+        interactionData.delivery_date = deliveryDate
+        interactionData.delivery_time = deliveryTime || null
+      }
+
+      if (typeConfig.requiresEquipment) {
+        interactionData.equipment_selections = equipmentSelections
+        interactionData.accessory_selections = accessorySelections
+      }
+
+      if (selectedType === 'hire') {
+        interactionData.hire_start_date = hireStartDate || deliveryDate
+        interactionData.estimated_hire_end = hireEndDate
+      }
+
+      // Choose the appropriate API endpoint based on interaction type
+      let apiEndpoint = '/api/hire/hires' // Default to hire endpoint
+      
+      // For now, only hire is implemented
+      if (selectedType !== 'hire') {
+        throw new Error(`${typeConfig.name} interactions are not yet implemented`)
+      }
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(hireData)
+        body: JSON.stringify(interactionData)
       })
 
       const result = await response.json()
 
       if (result.success) {
-        // Redirect to the new view interactions page with the created interaction
-        router.push(`/diary/interactions?id=${result.data.interaction_id}`)
+        // Redirect based on interaction type
+        if (selectedType === 'hire' && result.data.interaction_id) {
+          router.push(`/diary/interactions?id=${result.data.interaction_id}`)
+        } else {
+          router.push('/diary/interactions')
+        }
       } else {
-        setError(result.error || 'Failed to create hire interaction')
+        setError(result.error || `Failed to create ${typeConfig.name.toLowerCase()}`)
       }
 
     } catch (err) {
-      console.error('Failed to create hire:', err)
-      setError('Failed to create hire interaction')
+      console.error('Failed to create interaction:', err)
+      setError(`Failed to create ${typeConfig?.name.toLowerCase() || 'interaction'}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -356,9 +288,54 @@ export default function NewInteractionPage() {
     )
   }
 
+  const typeConfig = getSelectedTypeConfig()
+  const totalSteps = getTotalSteps()
+
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-2xl font-semibold text-text mb-6">Create New Interaction</h1>
+    <div className="max-w-6xl mx-auto p-6">
+      {/* Header with Progress */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-text mb-4">Create New Interaction</h1>
+        
+        {/* Progress Indicator */}
+        <div className="flex items-center gap-4 mb-4">
+          {Array.from({ length: totalSteps }, (_, index) => {
+            const step = index + 1
+            const isActive = step === currentStep
+            const isComplete = step < currentStep || isStepComplete(step)
+            
+            return (
+              <div key={step} className="flex items-center">
+                <button
+                  onClick={() => goToStep(step)}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+                    isActive 
+                      ? 'bg-gold text-base' 
+                      : isComplete 
+                      ? 'bg-green text-base cursor-pointer' 
+                      : 'bg-overlay text-subtle cursor-not-allowed'
+                  }`}
+                  disabled={!isComplete && step !== currentStep}
+                >
+                  {isComplete && step < currentStep ? '✓' : step}
+                </button>
+                <span className={`ml-2 text-sm ${isActive ? 'text-text font-medium' : 'text-subtle'}`}>
+                  {getStepName(step)}
+                </span>
+                {step < totalSteps && (
+                  <div className={`mx-4 h-px w-8 ${isComplete ? 'bg-green' : 'bg-overlay'}`} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {typeConfig && (
+          <div className="text-sm text-subtle">
+            Creating: <span className="text-text font-medium">{typeConfig.name}</span>
+          </div>
+        )}
+      </div>
 
       {error && (
         <div className="bg-red/20 border border-red text-red p-4 rounded mb-6">
@@ -366,352 +343,209 @@ export default function NewInteractionPage() {
         </div>
       )}
 
-      {/* Interaction Type Selection */}
-      <div className="bg-surface p-6 rounded-lg mb-6">
-        <h2 className="text-lg font-medium text-text mb-4">Select Interaction Type</h2>
-        <div className="flex gap-4">
-          <button
-            onClick={() => setInteractionType('hire')}
-            className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-              interactionType === 'hire' 
-                ? 'bg-gold text-base' 
-                : 'bg-overlay text-text hover:bg-highlight-med'
-            }`}
-          >
-            New Hire
-          </button>
-          <button
-            onClick={() => setInteractionType('quote')}
-            className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-              interactionType === 'quote' 
-                ? 'bg-gold text-base' 
-                : 'bg-overlay text-text hover:bg-highlight-med'
-            }`}
-            disabled
-          >
-            Quote Request (Coming Soon)
-          </button>
-        </div>
-      </div>
+      {/* Step Content */}
+      <div className="space-y-6">
+        {/* Step 1: Interaction Type Selection */}
+        {currentStep === 1 && (
+          <InteractionTypeSelector
+            selectedType={selectedType}
+            onTypeSelect={handleTypeSelect}
+          />
+        )}
 
-      {/* Hire Creation Form */}
-      {interactionType === 'hire' && (
-        <div className="space-y-6">
-          {/* Customer Selection */}
+        {/* Step 2: Customer Selection */}
+        {currentStep === 2 && typeConfig && (
+          <CustomerSelection
+            onCustomerSelect={setSelectedCustomer}
+            onContactSelect={setSelectedContact}
+            onSiteSelect={setSelectedSite}
+            selectedCustomer={selectedCustomer}
+            selectedContact={selectedContact}
+            selectedSite={selectedSite}
+            requireSite={typeConfig.requiresDelivery}
+          />
+        )}
+
+        {/* Step 3: Equipment Selection (if required) */}
+        {currentStep === 3 && typeConfig?.requiresEquipment && (
+          <EquipmentSelection
+            onEquipmentChange={setEquipmentSelections}
+            onAccessoriesChange={setAccessorySelections}
+            equipmentSelections={equipmentSelections}
+            accessorySelections={accessorySelections}
+            deliveryDate={deliveryDate}
+          />
+        )}
+
+        {/* Step 4: Delivery Information (if required) */}
+        {((currentStep === 3 && typeConfig?.requiresDelivery && !typeConfig?.requiresEquipment) ||
+          (currentStep === 4 && typeConfig?.requiresDelivery)) && (
+          <DeliveryInformation
+            deliveryDate={deliveryDate}
+            deliveryTime={deliveryTime}
+            contactMethod={contactMethod}
+            notes={notes}
+            onDeliveryDateChange={setDeliveryDate}
+            onDeliveryTimeChange={setDeliveryTime}
+            onContactMethodChange={setContactMethod}
+            onNotesChange={setNotes}
+            hireStartDate={hireStartDate}
+            hireEndDate={hireEndDate}
+            onHireStartDateChange={setHireStartDate}
+            onHireEndDateChange={setHireEndDate}
+            requireDelivery={typeConfig?.requiresDelivery}
+            showHirePeriod={selectedType === 'hire'}
+          />
+        )}
+
+        {/* Final Step: Review & Submit */}
+        {currentStep === totalSteps && (
           <div className="bg-surface p-6 rounded-lg">
-            <h2 className="text-lg font-medium text-text mb-4">1. Customer Selection</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-text mb-2">Customer</label>
-                <select
-                  value={selectedCustomer?.customer_id || ''}
-                  onChange={(e) => handleCustomerChange(Number(e.target.value))}
-                  className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-                  required
-                >
-                  <option value="">Select Customer</option>
-                  {customers.map(customer => (
-                    <option key={customer.customer_id} value={customer.customer_id}>
-                      {customer.customer_name} ({customer.customer_code})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-text mb-2">Contact</label>
-                <select
-                  value={selectedContact?.contact_id || ''}
-                  onChange={(e) => handleContactChange(Number(e.target.value))}
-                  className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-                  disabled={!selectedCustomer}
-                  required
-                >
-                  <option value="">Select Contact</option>
-                  {contacts.map(contact => (
-                    <option key={contact.contact_id} value={contact.contact_id}>
-                      {contact.full_name} {contact.job_title && `(${contact.job_title})`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-text mb-2">Delivery Site</label>
-                <select
-                  value={selectedSite?.site_id || ''}
-                  onChange={(e) => handleSiteChange(Number(e.target.value))}
-                  className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-                  disabled={!selectedCustomer}
-                  required
-                >
-                  <option value="">Select Site</option>
-                  {sites.map(site => (
-                    <option key={site.site_id} value={site.site_id}>
-                      {site.site_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            <h2 className="text-lg font-medium text-text mb-4">Review & Submit</h2>
             
-            {selectedSite && (
-              <div className="mt-4 p-3 bg-overlay rounded">
-                <p className="text-sm text-subtle">
-                  <strong>Address:</strong> {selectedSite.full_address}
-                </p>
-                {selectedSite.site_contact_name && (
-                  <p className="text-sm text-subtle">
-                    <strong>Site Contact:</strong> {selectedSite.site_contact_name} 
-                    {selectedSite.site_contact_phone && ` - ${selectedSite.site_contact_phone}`}
-                  </p>
-                )}
-                {selectedSite.delivery_instructions && (
-                  <p className="text-sm text-subtle">
-                    <strong>Instructions:</strong> {selectedSite.delivery_instructions}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Equipment Selection */}
-          <div className="bg-surface p-6 rounded-lg">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-medium text-text">2. Equipment Selection</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setEquipmentMode('generic')}
-                  className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                    equipmentMode === 'generic' 
-                      ? 'bg-gold text-base' 
-                      : 'bg-overlay text-text hover:bg-highlight-med'
-                  }`}
-                >
-                  Generic Equipment
-                </button>
-                <button
-                  onClick={() => setEquipmentMode('specific')}
-                  className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                    equipmentMode === 'specific' 
-                      ? 'bg-gold text-base' 
-                      : 'bg-overlay text-text hover:bg-highlight-med'
-                  }`}
-                  disabled
-                >
-                  Specific Equipment
-                </button>
-              </div>
-            </div>
-
-            {/* Equipment Types List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              {equipmentTypes.map(equipment => (
-                <div key={equipment.equipment_type_id} className="bg-overlay p-4 rounded border">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="font-medium text-text">{equipment.type_name}</h3>
-                      <p className="text-sm text-subtle">{equipment.type_code}</p>
-                      <p className="text-xs text-muted">{equipment.description}</p>
+            <div className="space-y-6">
+              {/* Interaction Summary */}
+              <div className="bg-overlay p-4 rounded">
+                <h3 className="font-medium text-text mb-3">Interaction Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-subtle">Type:</span>
+                    <div className="text-text font-medium flex items-center gap-2">
+                      <span>{typeConfig?.icon}</span>
+                      {typeConfig?.name}
                     </div>
-                    <span className="text-sm text-subtle">
-                      {equipment.available_units}/{equipment.total_units} available
-                    </span>
                   </div>
-                  <button
-                    onClick={() => addEquipmentSelection(equipment.equipment_type_id)}
-                    className="w-full bg-green text-base py-2 rounded hover:bg-blue transition-colors"
-                    disabled={equipment.available_units === 0}
-                  >
-                    Add to Selection
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Selected Equipment */}
-            {equipmentSelections.length > 0 && (
-              <div>
-                <h3 className="font-medium text-text mb-3">Selected Equipment</h3>
-                <div className="space-y-2">
-                  {equipmentSelections.map(selection => (
-                    <div key={selection.equipment_type_id} className="flex items-center justify-between bg-highlight-low p-3 rounded">
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg">🔧</span>
-                        <div>
-                          <span className="font-medium text-text">{selection.type_name}</span>
-                          <span className="text-sm text-subtle ml-2">({selection.type_code})</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <label className="text-sm text-subtle">Qty:</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="99"
-                          value={selection.quantity}
-                          onChange={(e) => updateEquipmentQuantity(selection.equipment_type_id, Number(e.target.value))}
-                          className="w-16 p-1 bg-overlay border border-highlight-med rounded text-center text-text"
-                        />
-                        <button
-                          onClick={() => updateEquipmentQuantity(selection.equipment_type_id, 0)}
-                          className="text-red hover:text-love"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Accessories Selection */}
-          {accessorySelections.length > 0 && (
-            <div className="bg-surface p-6 rounded-lg">
-              <h2 className="text-lg font-medium text-text mb-4">3. Accessories</h2>
-              
-              {/* Auto-added accessories */}
-              <div className="mb-6">
-                <h3 className="font-medium text-text mb-3">Default Accessories (Auto-added)</h3>
-                <div className="space-y-2">
-                  {accessorySelections.filter(as => as.accessory_type === 'default').map(selection => (
-                    <div key={selection.accessory_id} className="flex items-center justify-between bg-highlight-low p-3 rounded">
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg">📦</span>
-                        <span className="font-medium text-text">{selection.accessory_name}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-subtle">Qty: {selection.quantity}</span>
-                      </div>
-                    </div>
-                  ))}
+                  <div>
+                    <span className="text-subtle">Contact Method:</span>
+                    <div className="text-text font-medium capitalize">{contactMethod}</div>
+                  </div>
                 </div>
               </div>
 
-              {/* Optional accessories */}
-              <div>
-                <h3 className="font-medium text-text mb-3">Optional Accessories</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  {accessories.filter(acc => acc.accessory_type === 'optional' || !acc.equipment_type_id).map(accessory => (
-                    <div key={accessory.accessory_id} className="bg-overlay p-4 rounded border">
-                      <h4 className="font-medium text-text">{accessory.accessory_name}</h4>
-                      <p className="text-xs text-muted mb-2">{accessory.description}</p>
-                      <button
-                        onClick={() => addOptionalAccessory(accessory.accessory_id)}
-                        className="w-full bg-pine text-base py-2 rounded hover:bg-foam transition-colors"
-                      >
-                        Add Accessory
-                      </button>
+              {/* Customer Summary */}
+              <div className="bg-overlay p-4 rounded">
+                <h3 className="font-medium text-text mb-3">Customer Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-subtle">Customer:</span>
+                    <div className="text-text font-medium">{selectedCustomer?.customer_name}</div>
+                    <div className="text-subtle">{selectedCustomer?.customer_code}</div>
+                  </div>
+                  <div>
+                    <span className="text-subtle">Contact:</span>
+                    <div className="text-text font-medium">{selectedContact?.full_name}</div>
+                    <div className="text-subtle">{selectedContact?.phone_number}</div>
+                  </div>
+                  {selectedSite && (
+                    <div>
+                      <span className="text-subtle">Delivery Site:</span>
+                      <div className="text-text font-medium">{selectedSite.site_name}</div>
+                      <div className="text-subtle">{selectedSite.full_address}</div>
                     </div>
-                  ))}
+                  )}
                 </div>
+              </div>
 
-                {/* Selected optional accessories */}
-                {accessorySelections.filter(as => as.accessory_type === 'optional').length > 0 && (
+              {/* Equipment Summary */}
+              {typeConfig?.requiresEquipment && equipmentSelections.length > 0 && (
+                <div className="bg-overlay p-4 rounded">
+                  <h3 className="font-medium text-text mb-3">Equipment Summary</h3>
                   <div className="space-y-2">
-                    {accessorySelections.filter(as => as.accessory_type === 'optional').map(selection => (
-                      <div key={selection.accessory_id} className="flex items-center justify-between bg-highlight-low p-3 rounded">
-                        <div className="flex items-center gap-3">
-                          <span className="text-lg">📦</span>
-                          <span className="font-medium text-text">{selection.accessory_name}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <label className="text-sm text-subtle">Qty:</label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={selection.quantity}
-                            onChange={(e) => updateAccessoryQuantity(selection.accessory_id, Number(e.target.value))}
-                            className="w-16 p-1 bg-overlay border border-highlight-med rounded text-center text-text"
-                          />
-                          <button
-                            onClick={() => updateAccessoryQuantity(selection.accessory_id, 0)}
-                            className="text-red hover:text-love"
-                          >
-                            ✕
-                          </button>
-                        </div>
+                    {equipmentSelections.map(selection => (
+                      <div key={selection.equipment_type_id} className="flex justify-between text-sm">
+                        <span className="text-text">{selection.type_name} ({selection.type_code})</span>
+                        <span className="text-subtle">Qty: {selection.quantity}</span>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
-            </div>
-          )}
+                  {accessorySelections.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-highlight-med">
+                      <span className="text-subtle text-sm">
+                        Accessories: {accessorySelections.length} items
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
-          {/* Delivery Information */}
-          <div className="bg-surface p-6 rounded-lg">
-            <h2 className="text-lg font-medium text-text mb-4">4. Delivery Information</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-text mb-2">Delivery Date</label>
-                <input
-                  type="date"
-                  value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                  className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-text mb-2">Delivery Time</label>
-                <input
-                  type="time"
-                  value={deliveryTime}
-                  onChange={(e) => setDeliveryTime(e.target.value)}
-                  className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-text mb-2">Contact Method</label>
-                <select
-                  value={contactMethod}
-                  onChange={(e) => setContactMethod(e.target.value)}
-                  className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-                >
-                  <option value="phone">Phone</option>
-                  <option value="email">Email</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="in_person">In Person</option>
-                </select>
-              </div>
-            </div>
+              {/* Delivery Summary */}
+              {typeConfig?.requiresDelivery && deliveryDate && (
+                <div className="bg-overlay p-4 rounded">
+                  <h3 className="font-medium text-text mb-3">Delivery Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-subtle">Date:</span>
+                      <div className="text-text font-medium">
+                        {new Date(deliveryDate).toLocaleDateString('en-ZA', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </div>
+                    </div>
+                    {deliveryTime && (
+                      <div>
+                        <span className="text-subtle">Time:</span>
+                        <div className="text-text font-medium">{deliveryTime}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
-            <div>
-              <label className="block text-sm font-medium text-text mb-2">Special Instructions</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
-                className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-                placeholder="Any special delivery instructions or notes..."
-              />
+              {/* Notes */}
+              {notes && (
+                <div className="bg-overlay p-4 rounded">
+                  <h3 className="font-medium text-text mb-3">Special Instructions</h3>
+                  <div className="text-text text-sm">{notes}</div>
+                </div>
+              )}
             </div>
           </div>
+        )}
+      </div>
 
-          {/* Submit Button */}
-          <div className="flex justify-end gap-4">
+      {/* Navigation Buttons */}
+      <div className="flex justify-between items-center mt-8">
+        <div>
+          {currentStep > 1 && (
             <button
-              onClick={() => router.back()}
+              onClick={goToPreviousStep}
               className="px-6 py-3 bg-overlay text-text rounded-lg hover:bg-highlight-med transition-colors"
             >
-              Cancel
+              ← Previous
             </button>
+          )}
+        </div>
+
+        <div className="flex gap-4">
+          <button
+            onClick={() => router.push('/diary')}
+            className="px-6 py-3 bg-red/20 text-red rounded-lg hover:bg-red/30 transition-colors"
+          >
+            Cancel
+          </button>
+
+          {currentStep < totalSteps ? (
             <button
-              onClick={handleSubmit}
-              disabled={isSubmitting || !selectedCustomer || !selectedContact || !selectedSite || equipmentSelections.length === 0 || !deliveryDate}
+              onClick={goToNextStep}
+              disabled={!isStepComplete(currentStep)}
               className="px-6 py-3 bg-green text-base rounded-lg hover:bg-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Creating...' : 'Create Hire Interaction'}
+              Next →
             </button>
-          </div>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting || !isStepComplete(currentStep)}
+              className="px-6 py-3 bg-green text-base rounded-lg hover:bg-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? 'Creating...' : `Create ${typeConfig?.name || 'Interaction'}`}
+            </button>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -393,7 +393,7 @@ def get_hire_details(interaction_id: int):
 
 @hire_bp.route('/hires', methods=['GET'])
 def get_hire_list():
-    """Get paginated hire list with filters"""
+    """Get paginated hire list with filters - FIXED JSON serialization"""
     try:
         filters = {
             'date_from': request.args.get('date_from'),
@@ -411,47 +411,105 @@ def get_hire_list():
         if filters['date_to']:
             filters['date_to'] = datetime.strptime(filters['date_to'], '%Y-%m-%d').date()
         
-        # Use direct query instead of stored procedure for now
-        try:
-            hire_list = hire_service.get_hire_list(filters)
-        except Exception as stored_proc_error:
-            # Fallback to simple query if stored procedure fails
-            logger.warning(f"Stored procedure failed, using fallback: {stored_proc_error}")
-            
-            # Simple direct query as fallback
-            query = """
-                SELECT 
-                    i.id as interaction_id,
-                    i.reference_number,
-                    i.status,
-                    c.customer_name,
-                    ct.first_name || ' ' || ct.last_name as contact_name,
-                    i.created_at,
-                    dt.scheduled_date as delivery_date,
-                    dt.status as driver_status,
-                    'pending' as allocation_status,
-                    'pending' as qc_status,
-                    '' as equipment_summary
-                FROM interactions.interactions i
-                JOIN core.customers c ON i.customer_id = c.id
-                JOIN core.contacts ct ON i.contact_id = ct.id
-                LEFT JOIN tasks.drivers_taskboard dt ON i.id = dt.interaction_id
-                WHERE i.interaction_type = 'hire'
-                ORDER BY i.created_at DESC
-                LIMIT %s OFFSET %s
-            """
-            
-            from api.diary.hire_management import db_service
-            hire_list = db_service.execute_query(query, [filters['limit'], filters['offset']])
+        # Use the FIXED stored procedure
+        hire_list = db_service.execute_procedure('sp_get_hire_list', [
+            filters['date_from'],
+            filters['date_to'], 
+            filters['status_filter'],
+            filters['customer_filter'],
+            filters['search_term'],
+            filters['limit'],
+            filters['offset']
+        ])
         
         return jsonify({
             'success': True,
             'data': hire_list,
             'count': len(hire_list),
-            'total_count': len(hire_list)  # Simplified for now
+            'total_count': hire_list[0]['total_count'] if hire_list else 0,
+            'filters_applied': {k: v for k, v in filters.items() if v is not None}
         })
+        
     except Exception as e:
         return handle_api_error(e)
+    
+
+@hire_bp.route('/interactions-by-date', methods=['GET'])
+def get_interactions_by_date():
+    """Get interactions for a specific date with search filtering - optimized for calendar view"""
+    try:
+        target_date_str = request.args.get('target_date')
+        search_term = request.args.get('search')
+        
+        # Default to today if no date provided
+        if target_date_str:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        else:
+            target_date = date.today()
+        
+        # Use the new stored procedure
+        interactions = db_service.execute_procedure(
+            'sp_get_interactions_by_date',
+            [target_date, search_term]
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': interactions,
+            'count': len(interactions),
+            'target_date': target_date.isoformat(),
+            'search_term': search_term
+        })
+        
+    except Exception as e:
+        return handle_api_error(e)
+    
+
+# =============================================================================
+# DEBUG ENDPOINT TO TEST JSON SERIALIZATION
+# =============================================================================
+
+@hire_bp.route('/test-json-serialization', methods=['GET'])
+def test_json_serialization():
+    """Test JSON serialization of different data types"""
+    try:
+        # Test the fixed hire list
+        hire_list = db_service.execute_procedure('sp_get_hire_list', [None, None, None, None, None, 5, 0])
+        
+        # Test the calendar view
+        interactions_today = db_service.execute_procedure('sp_get_interactions_by_date', [date.today(), None])
+        
+        # Test simple query
+        simple_query = db_service.execute_query("""
+            SELECT 
+                i.id,
+                i.reference_number,
+                i.created_at,
+                dt.scheduled_time::TEXT as scheduled_time_text,
+                'test_success' as status
+            FROM interactions.interactions i
+            LEFT JOIN tasks.drivers_taskboard dt ON i.id = dt.interaction_id
+            WHERE i.interaction_type = 'hire'
+            LIMIT 3
+        """)
+        
+        return jsonify({
+            'success': True,
+            'message': 'JSON serialization test completed successfully',
+            'test_results': {
+                'hire_list_count': len(hire_list),
+                'hire_list_sample': hire_list[:1] if hire_list else [],
+                'interactions_today_count': len(interactions_today),
+                'interactions_today_sample': interactions_today[:1] if interactions_today else [],
+                'simple_query_count': len(simple_query),
+                'simple_query_sample': simple_query[:1] if simple_query else []
+            }
+        })
+        
+    except Exception as e:
+        return handle_api_error(e)
+    
+# ==========================
 
 @hire_bp.route('/hires/dashboard-summary', methods=['GET'])
 def get_hire_dashboard_summary():
