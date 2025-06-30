@@ -31,24 +31,38 @@ driver_task_service = DriverTaskService(db_service)
 qc_service = QualityControlService(db_service)
 
 def get_current_user_id():
-    """Get current user ID from session"""
-    return session.get('currentUser', 'system')  # Default to system for now
+    """Get current user ID from session - implement based on your auth system"""
+    # TODO: Replace with your actual authentication logic
+    # For now, return a default employee ID
+    return 1  # Replace with actual session-based user ID
 
-def handle_api_error(error: Exception) -> tuple:
-    """Standard error handler for API endpoints"""
+def handle_api_error(error):
+    """Enhanced error handling for API endpoints"""
+    import traceback
+    from api.database.database_service import DatabaseError
+    
+    # Log the full error for debugging
+    app.logger.error(f"API Error: {str(error)}")
+    app.logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    # Return appropriate error response
     if isinstance(error, DatabaseError):
-        logger.error(f"Database error: {error.message}")
         return jsonify({
             'success': False,
-            'error': 'Database error occurred',
-            'details': error.message if error.message else str(error)
+            'error': 'Database operation failed',
+            'details': str(error) if app.debug else None
         }), 500
-    else:
-        logger.error(f"Unexpected error: {str(error)}")
+    elif isinstance(error, ValueError):
         return jsonify({
             'success': False,
-            'error': 'An unexpected error occurred',
+            'error': 'Invalid input data',
             'details': str(error)
+        }), 400
+    else:
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error',
+            'details': str(error) if app.debug else None
         }), 500
 
 # =============================================================================
@@ -237,6 +251,113 @@ def get_equipment_selection_data():
         return jsonify({
             'success': True,
             'data': selection_data
+        })
+    except Exception as e:
+        return handle_api_error(e)
+    
+
+
+@hire_bp.route('/accessories/all', methods=['GET'])
+def get_all_accessories():
+    """Get all accessories in the system for standalone selection"""
+    try:
+        search_term = request.args.get('search')
+        
+        accessories = equipment_service.get_all_accessories(search_term)
+        
+        return jsonify({
+            'success': True,
+            'data': accessories,
+            'count': len(accessories)
+        })
+    except Exception as e:
+        return handle_api_error(e)
+
+@hire_bp.route('/equipment/accessories-with-defaults', methods=['POST'])
+def get_equipment_accessories_with_defaults():
+    """Get calculated default accessories plus all available optional accessories for equipment"""
+    try:
+        data = request.get_json()
+        equipment_selections = data.get('equipment_selections', [])
+        
+        # Validate equipment selections
+        if not equipment_selections:
+            return jsonify({
+                'success': False,
+                'error': 'Equipment selections are required'
+            }), 400
+        
+        # Get comprehensive accessory data
+        result = equipment_service.get_equipment_accessories_with_defaults(equipment_selections)
+        
+        return jsonify({
+            'success': True,
+            'data': result,
+            'count': {
+                'calculated_accessories': len(result['calculated_accessories']),
+                'available_accessories': len(result['available_accessories'])
+            }
+        })
+    except Exception as e:
+        return handle_api_error(e)
+
+@hire_bp.route('/accessories/validate', methods=['POST'])
+def validate_accessory_selection():
+    """Validate accessory selections for business rules and constraints"""
+    try:
+        data = request.get_json()
+        accessory_selections = data.get('accessory_selections', [])
+        
+        validation_result = equipment_service.validate_accessory_selection(accessory_selections)
+        
+        return jsonify({
+            'success': True,
+            'data': validation_result
+        })
+    except Exception as e:
+        return handle_api_error(e)
+
+
+@hire_bp.route('/equipment/comprehensive-data', methods=['POST'])
+def get_comprehensive_equipment_data():
+    """
+    Get all equipment and accessory data needed for the frontend.
+    This is the main endpoint that provides everything in one call.
+    """
+    try:
+        data = request.get_json()
+        equipment_selections = data.get('equipment_selections', [])
+        search_term = data.get('search_term')
+        delivery_date_str = data.get('delivery_date')
+        include_all_accessories = data.get('include_all_accessories', True)
+        
+        delivery_date = None
+        if delivery_date_str:
+            delivery_date = datetime.strptime(delivery_date_str, '%Y-%m-%d').date()
+        
+        # Get equipment types
+        equipment_types = equipment_service.get_equipment_types(search_term, delivery_date)
+        
+        # Get all accessories for standalone use
+        all_accessories = equipment_service.get_all_accessories() if include_all_accessories else []
+        
+        # Get equipment-specific accessories if equipment is selected
+        equipment_data = {}
+        if equipment_selections:
+            equipment_data = equipment_service.get_equipment_accessories_with_defaults(equipment_selections)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'equipment_types': equipment_types,
+                'all_accessories': all_accessories,
+                'equipment_accessories': equipment_data,
+                'summary': {
+                    'equipment_types_count': len(equipment_types),
+                    'all_accessories_count': len(all_accessories),
+                    'selected_equipment_count': len(equipment_selections)
+                }
+            }
         })
     except Exception as e:
         return handle_api_error(e)
