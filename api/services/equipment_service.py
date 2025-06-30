@@ -27,7 +27,6 @@ class EquipmentService:
     @handle_database_errors
     def get_all_accessories(self, search_term: str = None) -> List[Dict[str, Any]]:
         """Get all accessories in the system (for standalone accessory selection)"""
-        # Use the view to get all accessories with their equipment context
         query = """
         SELECT 
             accessory_id,
@@ -35,16 +34,12 @@ class EquipmentService:
             accessory_code,
             unit_of_measure,
             is_consumable,
-            description,
-            1.0 as default_quantity,
-            'optional' as accessory_type,
-            equipment_type_names,
-            equipment_type_count
+            description
         FROM core.v_accessories_with_equipment
         WHERE (%s IS NULL OR 
-               accessory_name ILIKE %s OR 
-               accessory_code ILIKE %s OR 
-               description ILIKE %s)
+            accessory_name ILIKE %s OR 
+            accessory_code ILIKE %s OR 
+            description ILIKE %s)
         ORDER BY is_consumable DESC, accessory_name;
         """
         
@@ -55,6 +50,59 @@ class EquipmentService:
             params = [None, None, None, None]
             
         return self.db.execute_query(query, params)
+    
+
+    @handle_database_errors
+    def get_equipment_accessories_complete(self, equipment_selections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Get ALL accessories for selected equipment with proper quantities.
+        This is the simple workflow method that returns everything at once.
+        
+        Returns list of accessories in frontend format:
+        - Default accessories with their calculated quantities  
+        - Optional accessories with quantity 0
+        """
+        if not equipment_selections:
+            return []
+        
+        equipment_type_ids = [sel['equipment_type_id'] for sel in equipment_selections]
+        
+        # Get calculated default accessories
+        calculated_defaults = self.calculate_auto_accessories(equipment_selections)
+        default_accessory_ids = {acc['accessory_id'] for acc in calculated_defaults}
+        
+        # Get ALL accessories for these equipment types
+        all_accessories = self.get_equipment_accessories(equipment_type_ids)
+        
+        # Build the complete list
+        result_accessories = []
+        
+        # Add default accessories with calculated quantities
+        for accessory in calculated_defaults:
+            result_accessories.append({
+                'accessory_id': accessory['accessory_id'],
+                'quantity': float(accessory['total_quantity']),
+                'accessory_type': 'equipment_default',
+                'accessory_name': accessory['accessory_name'],
+                'unit_of_measure': accessory.get('unit_of_measure', 'item'),
+                'is_consumable': accessory.get('is_consumable', False),
+                'equipment_type_id': accessory.get('equipment_type_id')
+            })
+        
+        # Add optional accessories with quantity 0
+        for accessory in all_accessories:
+            if accessory['accessory_id'] not in default_accessory_ids:
+                result_accessories.append({
+                    'accessory_id': accessory['accessory_id'],
+                    'quantity': 0,
+                    'accessory_type': 'equipment_optional',
+                    'accessory_name': accessory['accessory_name'],
+                    'unit_of_measure': accessory.get('unit_of_measure', 'item'),
+                    'is_consumable': accessory.get('is_consumable', False),
+                    'equipment_type_id': accessory.get('equipment_type_id')
+                })
+        
+        return result_accessories  
     
     @handle_database_errors
     def get_equipment_accessories_with_defaults(self, equipment_selections: List[Dict[str, Any]]) -> Dict[str, Any]:
