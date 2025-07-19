@@ -1,92 +1,95 @@
+// app/components/Navbar.tsx
 'use client'
 
+import { useState, useEffect } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
 
 interface User {
-  username: string
+  user_id: number
   name: string
   role: string
 }
 
-// Navigation items with proper URLs and display names
-const NAV_ITEMS = [
-  { key: 'home', url: '/home', displayName: 'Home' },
+const MAIN_NAV_ITEMS = [
   { key: 'diary', url: '/diary', displayName: 'Diary' },
-  { key: 'allocation', url: '/allocation', displayName: 'Allocation' }
+  { key: 'equipment', url: '/equipment', displayName: 'Equipment' },
+  { key: 'customers', url: '/customers', displayName: 'Customers' },
+  { key: 'reports', url: '/reports', displayName: 'Reports' },
+  { key: 'settings', url: '/settings', displayName: 'Settings' }
 ]
 
 export default function Navbar() {
-  const pathname = usePathname()
   const router = useRouter()
+  const pathname = usePathname()
   const [currentUser, setCurrentUser] = useState<User | null>(null)
-  const [activeSection, setActiveSection] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/auth/session', {
-      credentials: 'include'
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.user) {
-          setCurrentUser(data.user)
-        }
+    checkAuthStatus()
+  }, [])
+
+  const checkAuthStatus = async () => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        credentials: 'include'
       })
-      .catch(err => console.error('Failed to fetch session:', err))
-
-    // Find which nav item matches the current pathname
-    const matchedItem = NAV_ITEMS.find(item => 
-      pathname === item.url || (item.url !== '/' && pathname?.startsWith(item.url))
-    )
-
-    if (matchedItem) {
-      setActiveSection(matchedItem.key)
-    } else if (pathname === '/') {
-      setActiveSection('home')
+      if (response.ok) {
+        const user = await response.json()
+        setCurrentUser(user)
+      }
+    } catch (error) {
+      console.error('Auth check failed:', error)
     }
-  }, [pathname])
+  }
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { 
+      await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include'
       })
       setCurrentUser(null)
-      window.location.href = '/login'
-    } catch (err) {
-      console.error('Logout error:', err)
-      // Force logout even if request fails
-      setCurrentUser(null)
-      window.location.href = '/login'
+      router.push('/login')
+    } catch (error) {
+      console.error('Logout failed:', error)
     }
   }
 
-  const handleNavClick = (item: typeof NAV_ITEMS[0]) => {
-    router.push(item.url)
-    setActiveSection(item.key)
+  const isActiveMainNav = (url: string) => {
+    if (url === '/') return pathname === '/'
+    return pathname.startsWith(url)
   }
 
   return (
-    <div className="sticky top-0 z-50">
-      <div className="relative">
-        {/* Main Navbar */}
-        <div className="bg-base rounded-b-lg relative z-20 shadow-md">
-          <div className="flex justify-between items-center px-6 py-4">
-            <div className="flex space-x-4">
-              {NAV_ITEMS.map(item => (
+    <div className="relative">
+      <div className="bg-surface shadow-lg border-b border-highlight-low">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            {/* Logo */}
+            <div className="flex-shrink-0">
+              <Link href="/" className="text-2xl font-bold text-gold hover:text-yellow transition-colors">
+                ToolHire
+              </Link>
+            </div>
+            
+            {/* Main Navigation */}
+            <div className="flex space-x-1">
+              {MAIN_NAV_ITEMS.map((item) => (
                 <button
                   key={item.key}
-                  onClick={() => handleNavClick(item)}
-                  className={`px-4 py-2 rounded-xl transition-colors ${
-                    activeSection === item.key ? 'bg-gold/30' : 'hover:bg-overlay'
+                  onClick={() => router.push(item.url)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActiveMainNav(item.url)
+                      ? 'bg-gold/30 text-gold border border-gold/20' 
+                      : 'text-text hover:bg-overlay hover:text-gold'
                   }`}
                 >
                   {item.displayName}
                 </button>
               ))}
             </div>
+            
+            {/* User Menu */}
             <div className="flex items-center gap-4">
               {currentUser ? (
                 <>
@@ -112,13 +115,22 @@ export default function Navbar() {
           </div>
         </div>
         
-        {/* Ribbon Container */}
+        {/* Main Ribbon Container (Level 2) */}
         <div 
           id="ribbon-container"
-          className="bg-overlay/80 backdrop-blur-md border-t border-highlight/20 shadow-inner rounded-b-lg -mt-2 relative z-10"
+          className="bg-overlay/80 backdrop-blur-md border-t border-highlight/20 shadow-inner"
           style={{ display: 'none' }}
         >
-          {/* Content will be injected here by Ribbon component */}
+          {/* Content will be injected here by main Ribbon component */}
+        </div>
+        
+        {/* Sub-Ribbon Container (Level 3 - for section-specific navigation) */}
+        <div 
+          id="sub-ribbon-container"
+          className="border-t border-highlight-low/30"
+          style={{ display: 'none' }}
+        >
+          {/* Content will be injected here by section layouts */}
         </div>
       </div>
     </div>

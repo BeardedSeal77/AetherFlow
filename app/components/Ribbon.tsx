@@ -1,3 +1,4 @@
+// app/components/Ribbon.tsx - DEBUG VERSION
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
@@ -20,6 +21,12 @@ export default function Ribbon({ items, basePath, defaultRoute }: RibbonProps) {
   const router = useRouter()
 
   useEffect(() => {
+    console.log('🎗️ Ribbon Effect Running:', { 
+      basePath, 
+      pathname, 
+      items: items.map(i => ({ key: i.key, url: i.url, name: i.displayName }))
+    })
+
     // Show the ribbon
     const container = document.getElementById('ribbon-container')
     if (container) {
@@ -44,12 +51,19 @@ export default function Ribbon({ items, basePath, defaultRoute }: RibbonProps) {
             ? 'bg-gold/30 text-gold' 
             : 'text-text hover:bg-overlay'
         }`
+        
+        // DEBUG: Add logging to button click
         button.onclick = () => {
-          if (pathname === basePath && item.key === defaultRoute) {
-            router.replace(item.url)
-          } else {
-            router.push(item.url)
-          }
+          console.log('🔥 Button Clicked:', {
+            displayName: item.displayName,
+            key: item.key,
+            url: item.url,
+            currentPath: pathname,
+            basePath: basePath
+          })
+          
+          // Navigate to the item's URL
+          router.push(item.url)
         }
         navGroup.appendChild(button)
       })
@@ -69,11 +83,20 @@ export default function Ribbon({ items, basePath, defaultRoute }: RibbonProps) {
     }
   }, [pathname, router, items, basePath, defaultRoute])
 
-  // Handle automatic routing to default route
+  // Handle automatic routing to default route ONLY for exact basePath matches
   useEffect(() => {
+    console.log('🚀 Auto-redirect Effect:', {
+      pathname,
+      basePath,
+      isExactMatch: pathname === basePath,
+      defaultRoute
+    })
+
+    // Only redirect if we're on the EXACT basePath, not sub-paths
     if (pathname === basePath && defaultRoute) {
       const defaultItem = items.find(item => item.key === defaultRoute)
       if (defaultItem) {
+        console.log('🎯 Auto-redirecting to:', defaultItem.url)
         router.replace(defaultItem.url)
       }
     }

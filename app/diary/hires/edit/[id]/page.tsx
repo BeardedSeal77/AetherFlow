@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AuthCheck from '../../../../auth/AuthCheck'
-import Navbar from '../../../../components/Navbar'
-import Ribbon from '../../../../components/Ribbon'
 
 interface HireDetails {
   interaction_id: number
@@ -239,7 +237,7 @@ export default function EditHirePage({ params }: { params: Promise<{ id: string 
   return (
     <AuthCheck>
       <div className="min-h-screen bg-base">
-        <Navbar />
+        
         
         {/* Header */}
         <div className="bg-surface border-b border-highlight-low">
