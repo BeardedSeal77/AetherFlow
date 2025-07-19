@@ -10,7 +10,7 @@
     --color-muted: #5c6370;         /* Muted grey for secondary text */
     --color-subtle: #7f848e;        /* Subtler highlight text */
     --color-text: #dcdfe4;          /* Off-white/slate text */
-    
+
     --color-love: #a54242;          /* Rusty slate red */
     --color-gold: #c8ae7d;          /* Weathered bronze */
     --color-rose: #a67873;          /* Dusty rose rock tone */
@@ -21,7 +21,7 @@
     --color-highlight-low: #202328; /* Hover backgrounds */
     --color-highlight-med: #3c4048; /* Active or selection */
     --color-highlight-high: #4e525a;/* Elevated or pressed UI */
-    
+
     --color-green: #6a9955;         /* Slightly mossy green */
     --color-red: #bf616a;           /* Subdued warning red */
     --color-blue: #5e81ac;          /* Slate blue */

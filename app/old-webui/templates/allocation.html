@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block title %}Equipment Allocation - Equipment Hire System{% endblock %}
+
+{% block head %}
+<style>
+.allocation-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    margin-bottom: 1rem;
+}
+
+.allocation-card.urgent {
+    border-left: 4px solid #dc3545;
+}
+
+.allocation-card.today {
+    border-left: 4px solid #fd7e14;
+}
+
+.allocation-card.future {
+    border-left: 4px solid #20c997;
+}
+
+.equipment-unit {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.equipment-unit:hover {
+    background-color: #f8f9fa;
+    border-color: #0d6efd;
+}
+
+.equipment-unit.selected {
+    background-color: #e7f1ff;
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+}
+
+.equipment-unit.overdue-service {
+    border-left: 4px solid #dc3545;
+}
+
+.condition-badge {
+    font-size: 0.75rem;
+}
+
+.condition-excellent { background-color: #d4edda !important; color: #155724 !important; }
+.condition-good { background-color: #cce7ff !important; color: #004085 !important; }
+.condition-fair { background-color: #fff3cd !important; color: #856404 !important; }
+.condition-poor { background-color: #f8d7da !important; color: #721c24 !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0">
+                <i class="fas fa-tasks me-2"></i>
+                Equipment Allocation
+            </h1>
+            <div>
+                <button type="button" class="btn btn-outline-info me-2" id="refreshBtn">
+                    <i class="fas fa-sync me-2"></i>Refresh
+                </button>
+                <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter and Search -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row align-items-end">
+                    <div class="col-md-4">
+                        <label for="priorityFilter" class="form-label">Priority Filter</label>
+                        <select class="form-select" id="priorityFilter">
+                            <option value="">All Priorities</option>
+                            <option value="urgent">Urgent</option>
+                            <option value="today">Today</option>
+                            <option value="future">Future</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="statusFilter" class="form-label">Status Filter</label>
+                        <select class="form-select" id="statusFilter">
+                            <option value="booked">Awaiting Allocation</option>
+                            <option value="allocated">Allocated</option>
+                            <option value="">All Statuses</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="customerSearch" class="form-label">Customer Search</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="customerSearch" placeholder="Search customer...">
+                            <button type="button" class="btn btn-outline-secondary" id="searchBtn">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bookings List -->
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-clipboard-list me-2"></i>Bookings Awaiting Allocation
+                </h5>
+                <span class="badge bg-primary" id="bookingCount">{{ bookings|length }}</span>
+            </div>
+            <div class="card-body p-0">
+                <div id="bookingsList">
+                    {% if bookings %}
+                    {% for booking in bookings %}
+                    <div class="allocation-card {% if booking.delivery_date == moment().date %}today{% elif booking.delivery_date < moment().date %}urgent{% else %}future{% endif %}" 
+                         data-booking-id="{{ booking.booking_id }}"
+                         data-equipment-type-id="{{ booking.equipment_type_id }}"
+                         data-customer-name="{{ booking.customer_name }}"
+                         data-hire-start="{{ booking.hire_start_date }}"
+                         data-hire-end="{{ booking.hire_end_date or '' }}">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-md-8">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <h6 class="mb-1">
+                                                <strong>{{ booking.reference_number }}</strong> - {{ booking.customer_name }}
+                                            </h6>
+                                            <p class="mb-1">
+                                                <i class="fas fa-tools me-1"></i>
+                                                {{ booking.type_name }} ({{ booking.type_code }})
+                                            </p>
+                                        </div>
+                                        {{ booking.booking_status|status_badge|safe }}
+                                    </div>
+                                    
+                                    <div class="row text-muted small">
+                                        <div class="col-sm-6">
+                                            <i class="fas fa-calendar me-1"></i>
+                                            Delivery: {{ booking.delivery_date|date_format }}
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <i class="fas fa-clock me-1"></i>
+                                            Hire: {{ booking.hire_start_date|date_format }}
+                                            {% if booking.hire_end_date %}
+                                            - {{ booking.hire_end_date|date_format }}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 text-end">
+                                    <div class="mb-2">
+                                        <span class="badge bg-primary fs-6">
+                                            {{ booking.quantity_remaining }} of {{ booking.quantity_booked }}
+                                        </span>
+                                        <br><small class="text-muted">units remaining</small>
+                                    </div>
+                                    
+                                    <button type="button" class="btn btn-sm btn-primary allocate-btn"
+                                            data-booking-id="{{ booking.booking_id }}">
+                                        <i class="fas fa-plus me-1"></i>Allocate
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-check-circle fa-4x text-success mb-3"></i>
+                        <h4>All Equipment Allocated!</h4>
+                        <p class="text-muted">There are no bookings waiting for equipment allocation.</p>
+                        <a href="{{ url_for('new_hire') }}" class="btn btn-primary">
+                            <i class="fas fa-plus me-2"></i>Create New Hire
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Allocation Panel -->
+    <div class="col-lg-4">
+        <div class="card" id="allocationPanel" style="display: none;">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-cog me-2"></i>Equipment Allocation
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- Booking Info -->
+                <div id="bookingInfo" class="mb-3">
+                    <!-- Booking details will be populated here -->
+                </div>
+                
+                <!-- Available Equipment -->
+                <div class="mb-3">
+                    <h6>Available Equipment Units</h6>
+                    <div id="availableEquipment" style="max-height: 400px; overflow-y: auto;">
+                        <!-- Equipment units will be populated here -->
+                    </div>
+                </div>
+                
+                <!-- Selected Equipment -->
+                <div class="mb-3">
+                    <h6>Selected for Allocation <span id="selectedCount" class="badge bg-primary">0</span></h6>
+                    <div id="selectedEquipment" class="border rounded p-2" style="min-height: 80px; max-height: 200px; overflow-y: auto;">
+                        <div class="text-center text-muted">
+                            <i class="fas fa-hand-pointer me-1"></i>
+                            Select equipment units above
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Allocation Notes -->
+                <div class="mb-3">
+                    <label for="allocationNotes" class="form-label">Allocation Notes</label>
+                    <textarea class="form-control" id="allocationNotes" rows="3" 
+                              placeholder="Optional notes about this allocation..."></textarea>
+                </div>
+                
+                <!-- Actions -->
+                <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-success" id="confirmAllocationBtn" disabled>
+                        <i class="fas fa-check me-2"></i>Confirm Allocation
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="cancelAllocationBtn">
+                        <i class="fas fa-times me-2"></i>Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quality Control Panel -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-check-double me-2"></i>Quality Control
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Equipment requiring quality control sign-off</p>
+                <div id="qcEquipment">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-clipboard-check fa-2x mb-2"></i>
+                        <p>Loading QC items...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Allocation Modal -->
+<div class="modal fade" id="allocationModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-cog me-2"></i>Allocate Equipment
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modalBookingInfo" class="alert alert-info mb-3">
+                    <!-- Booking info will be populated here -->
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Available Equipment</h6>
+                        <div id="modalAvailableEquipment" style="max-height: 300px; overflow-y: auto;">
+                            <!-- Available equipment will be populated here -->
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Selected for Allocation</h6>
+                        <div id="modalSelectedEquipment" style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem; padding: 1rem;">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-hand-pointer me-1"></i>
+                                Select equipment units
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <label for="modalAllocationNotes" class="form-label">Allocation Notes</label>
+                    <textarea class="form-control" id="modalAllocationNotes" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="modalConfirmBtn" disabled>
+                    <i class="fas fa-check me-2"></i>Confirm Allocation
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- QC Modal -->
+<div class="modal fade" id="qcModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-check-double me-2"></i>Quality Control Sign-off
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="qcEquipmentInfo" class="alert alert-info">
+                    <!-- Equipment info will be populated here -->
+                </div>
+                
+                <div class="mb-3">
+                    <label for="qcNotes" class="form-label">QC Notes</label>
+                    <textarea class="form-control" id="qcNotes" rows="4" 
+                              placeholder="Equipment condition, any issues found, recommendations..."></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="qcDecision" id="qcApprove" value="true" checked>
+                        <label class="form-check-label text-success" for="qcApprove">
+                            <i class="fas fa-check-circle me-1"></i>Approve for Delivery
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="qcDecision" id="qcReject" value="false">
+                        <label class="form-check-label text-danger" for="qcReject">
+                            <i class="fas fa-times-circle me-1"></i>Reject - Needs Attention
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="qcConfirmBtn">
+                    <i class="fas fa-save me-2"></i>Save QC Decision
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/allocation.js') }}"></script>
+{% endblock %}

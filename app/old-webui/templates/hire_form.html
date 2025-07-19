@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+
+{% block title %}New Hire - Equipment Hire System{% endblock %}
+
+{% block head %}
+<style>
+.equipment-item, .accessory-item {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    background-color: #f8f9fa;
+}
+
+.equipment-item {
+    border-left: 4px solid #0d6efd;
+}
+
+.accessory-item {
+    border-left: 4px solid #6f42c1;
+}
+
+.quantity-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.quantity-controls button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.quantity-controls input {
+    width: 60px;
+    text-align: center;
+}
+
+.equipment-mode-toggle {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.25rem;
+}
+
+.equipment-mode-toggle .btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: #6c757d;
+}
+
+.equipment-mode-toggle .btn.active {
+    background: #0d6efd;
+    color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0">
+                <i class="fas fa-plus-circle me-2"></i>
+                New Equipment Hire
+            </h1>
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+
+<form id="hireForm">
+    <div class="row">
+        <!-- Customer Information -->
+        <div class="col-lg-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-user me-2"></i>Customer Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Customer Selection -->
+                    <div class="mb-3">
+                        <label for="customerSelect" class="form-label">Customer *</label>
+                        <select class="form-select" id="customerSelect" name="customer_id" required>
+                            <option value="">Select Customer...</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Contact Selection -->
+                    <div class="mb-3">
+                        <label for="contactSelect" class="form-label">Contact Person *</label>
+                        <select class="form-select" id="contactSelect" name="contact_id" required disabled>
+                            <option value="">Select Contact...</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Site Selection -->
+                    <div class="mb-3">
+                        <label for="siteSelect" class="form-label">Delivery Site *</label>
+                        <select class="form-select" id="siteSelect" name="site_id" required disabled>
+                            <option value="">Select Site...</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Contact Method -->
+                    <div class="mb-3">
+                        <label for="contactMethod" class="form-label">Contact Method</label>
+                        <select class="form-select" id="contactMethod" name="contact_method">
+                            <option value="phone">Phone</option>
+                            <option value="email">Email</option>
+                            <option value="whatsapp">WhatsApp</option>
+                            <option value="in_person">In Person</option>
+                            <option value="online">Online</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Hire Details -->
+        <div class="col-lg-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-calendar me-2"></i>Hire Details
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Hire Dates -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="hireStartDate" class="form-label">Hire Start Date *</label>
+                            <input type="date" class="form-control" id="hireStartDate" name="hire_start_date" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="hireEndDate" class="form-label">Hire End Date</label>
+                            <input type="date" class="form-control" id="hireEndDate" name="hire_end_date">
+                        </div>
+                    </div>
+                    
+                    <!-- Delivery Details -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="deliveryDate" class="form-label">Delivery Date *</label>
+                            <input type="date" class="form-control" id="deliveryDate" name="delivery_date" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="deliveryTime" class="form-label">Delivery Time</label>
+                            <input type="time" class="form-control" id="deliveryTime" name="delivery_time" value="09:00">
+                        </div>
+                    </div>
+                    
+                    <!-- Special Instructions -->
+                    <div class="mb-3">
+                        <label for="specialInstructions" class="form-label">Special Instructions</label>
+                        <textarea class="form-control" id="specialInstructions" name="special_instructions" rows="3" 
+                                  placeholder="Any special delivery or handling instructions..."></textarea>
+                    </div>
+                    
+                    <!-- Notes -->
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Internal Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3" 
+                                  placeholder="Internal notes about this hire..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Equipment Selection -->
+    <div class="row">
+        <div class="col-lg-8 mb-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-tools me-2"></i>Equipment Selection
+                    </h5>
+                    <!-- Equipment Mode Toggle -->
+                    <div class="equipment-mode-toggle d-flex">
+                        <button type="button" class="btn btn-sm active" id="genericModeBtn">
+                            <i class="fas fa-layer-group me-1"></i>Generic
+                        </button>
+                        <button type="button" class="btn btn-sm" id="specificModeBtn">
+                            <i class="fas fa-cog me-1"></i>Specific
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Equipment Search -->
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="fas fa-search"></i>
+                            </span>
+                            <input type="text" class="form-control" id="equipmentSearch" 
+                                   placeholder="Search equipment types...">
+                            <button type="button" class="btn btn-outline-secondary" id="equipmentSearchBtn">
+                                Search
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Equipment List -->
+                    <div id="equipmentList" class="mb-3" style="max-height: 300px; overflow-y: auto;">
+                        <div class="text-center py-4">
+                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">Search for equipment to add to hire</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Selected Items -->
+        <div class="col-lg-4 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-list me-2"></i>Selected Items
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="selectedItems" style="max-height: 400px; overflow-y: auto;">
+                        <div class="text-center py-4 text-muted">
+                            <i class="fas fa-inbox fa-3x mb-3"></i>
+                            <p>No items selected</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Accessories Section -->
+    <div class="row">
+        <div class="col-12 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-puzzle-piece me-2"></i>Additional Accessories
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Default accessories are automatically added based on selected equipment. You can add additional accessories here.</p>
+                    
+                    <!-- Accessory Search -->
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-search"></i>
+                                </span>
+                                <input type="text" class="form-control" id="accessorySearch" 
+                                       placeholder="Search accessories...">
+                                <button type="button" class="btn btn-outline-secondary" id="accessorySearchBtn">
+                                    Search
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Standalone Accessories List -->
+                    <div id="accessoryList" style="max-height: 200px; overflow-y: auto;">
+                        <div class="text-center py-3 text-muted">
+                            <i class="fas fa-search fa-2x mb-2"></i>
+                            <p>Search for additional accessories</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Form Actions -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <button type="button" class="btn btn-outline-primary" id="validateBtn">
+                                <i class="fas fa-check-circle me-2"></i>Validate Hire
+                            </button>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-secondary me-2" id="resetBtn">
+                                <i class="fas fa-undo me-2"></i>Reset Form
+                            </button>
+                            <button type="submit" class="btn btn-primary" id="submitBtn">
+                                <i class="fas fa-save me-2"></i>Create Hire
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/hire_form.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Equipment Hire System{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0">
+                <i class="fas fa-tachometer-alt me-2"></i>
+                Dashboard
+            </h1>
+            <div>
+                <a href="{{ url_for('new_hire') }}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>New Hire
+                </a>
+                <a href="{{ url_for('allocation_dashboard') }}" class="btn btn-outline-primary">
+                    <i class="fas fa-tasks me-2"></i>Allocation
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Dashboard Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-2">
+        <div class="card bg-primary text-white h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="card-title mb-0">Active Hires</h6>
+                        <h3 class="mb-0">{{ dashboard.active_hires or 0 }}</h3>
+                    </div>
+                    <div class="ms-3">
+                        <i class="fas fa-handshake fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-2">
+        <div class="card bg-warning text-white h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="card-title mb-0">Pending Allocations</h6>
+                        <h3 class="mb-0">{{ dashboard.pending_allocations or 0 }}</h3>
+                    </div>
+                    <div class="ms-3">
+                        <i class="fas fa-clipboard-list fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-2">
+        <div class="card bg-info text-white h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="card-title mb-0">Pending Deliveries</h6>
+                        <h3 class="mb-0">{{ dashboard.pending_deliveries or 0 }}</h3>
+                    </div>
+                    <div class="ms-3">
+                        <i class="fas fa-truck fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-2">
+        <div class="card bg-secondary text-white h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="card-title mb-0">Pending Collections</h6>
+                        <h3 class="mb-0">{{ dashboard.pending_collections or 0 }}</h3>
+                    </div>
+                    <div class="ms-3">
+                        <i class="fas fa-undo fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-2">
+        <div class="card bg-danger text-white h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="card-title mb-0">Equipment On Hire</h6>
+                        <h3 class="mb-0">{{ dashboard.equipment_on_hire or 0 }}</h3>
+                    </div>
+                    <div class="ms-3">
+                        <i class="fas fa-tools fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-2">
+        <div class="card bg-success text-white h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="card-title mb-0">Equipment Available</h6>
+                        <h3 class="mb-0">{{ dashboard.equipment_available or 0 }}</h3>
+                    </div>
+                    <div class="ms-3">
+                        <i class="fas fa-check-circle fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Row -->
+<div class="row">
+    <!-- Recent Hires -->
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list me-2"></i>Recent Hires
+                </h5>
+                <a href="#" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_hires %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Reference</th>
+                                <th>Customer</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Equipment</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for hire in recent_hires %}
+                            <tr>
+                                <td>
+                                    <strong>{{ hire.reference_number }}</strong>
+                                </td>
+                                <td>{{ hire.customer_name }}</td>
+                                <td>{{ hire.delivery_date|date_format }}</td>
+                                <td>
+                                    {{ hire.allocation_status|status_badge|safe }}
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark">
+                                        {{ hire.total_equipment_booked }} items
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('hire_details', interaction_id=hire.interaction_id) }}" 
+                                       class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No recent hires found</p>
+                    <a href="{{ url_for('new_hire') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Create First Hire
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Driver Tasks -->
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-truck me-2"></i>Driver Tasks
+                </h5>
+                <a href="#" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                {% if driver_tasks %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Task</th>
+                                <th>Customer</th>
+                                <th>Date</th>
+                                <th>Driver</th>
+                                <th>Status</th>
+                                <th>Ready</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in driver_tasks %}
+                            <tr>
+                                <td>
+                                    <i class="fas fa-{{ 'truck' if task.task_type == 'delivery' else 'undo' }} me-2"></i>
+                                    {{ task.task_type|title }}
+                                </td>
+                                <td>{{ task.customer_name }}</td>
+                                <td>{{ task.scheduled_date|date_format }}</td>
+                                <td>
+                                    <span class="badge bg-light text-dark">
+                                        {{ task.assigned_driver }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {{ task.status|status_badge|safe }}
+                                </td>
+                                <td>
+                                    {% if task.equipment_allocated and task.equipment_verified %}
+                                        <i class="fas fa-check-circle text-success" title="Ready for delivery"></i>
+                                    {% elif task.equipment_allocated %}
+                                        <i class="fas fa-clock text-warning" title="Awaiting QC"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger" title="Awaiting allocation"></i>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-truck fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No pending driver tasks</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Equipment Utilization -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>Equipment Utilization
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if equipment_utilization %}
+                <div class="row">
+                    {% for equipment in equipment_utilization %}
+                    <div class="col-lg-3 col-md-6 mb-3">
+                        <div class="card border-left-primary">
+                            <div class="card-body">
+                                <div class="row align-items-center">
+                                    <div class="col">
+                                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                            {{ equipment.type_name }}
+                                        </div>
+                                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                            {{ equipment.utilization_percentage or 0 }}%
+                                        </div>
+                                        <div class="text-xs text-muted">
+                                            {{ equipment.available_units }}/{{ equipment.total_units }} available
+                                        </div>
+                                        <div class="progress mt-2" style="height: 6px;">
+                                            <div class="progress-bar bg-primary" 
+                                                 style="width: {{ equipment.utilization_percentage or 0 }}%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-auto">
+                                        <i class="fas fa-tools fa-2x text-primary opacity-25"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No equipment utilization data available</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    // Auto-refresh dashboard every 5 minutes
+    setInterval(function() {
+        location.reload();
+    }, 300000); // 5 minutes
+    
+    // Add tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+{% endblock %}

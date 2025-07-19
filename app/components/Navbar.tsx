@@ -5,16 +5,16 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 interface User {
-  CustomerID: number
-  CustomerName: string
-  CustomerEmail: string
+  username: string
+  name: string
+  role: string
 }
 
 // Navigation items with proper URLs and display names
 const NAV_ITEMS = [
-  { key: 'home', url: '/', displayName: 'Home' },
+  { key: 'home', url: '/home', displayName: 'Home' },
   { key: 'diary', url: '/diary', displayName: 'Diary' },
-  { key: 'page 3', url: '/page3', displayName: 'Page 3' }
+  { key: 'allocation', url: '/allocation', displayName: 'Allocation' }
 ]
 
 export default function Navbar() {
@@ -24,7 +24,9 @@ export default function Navbar() {
   const [activeSection, setActiveSection] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/auth/session')
+    fetch('/api/auth/session', {
+      credentials: 'include'
+    })
       .then(res => res.json())
       .then(data => {
         if (data.user) {
@@ -46,9 +48,19 @@ export default function Navbar() {
   }, [pathname])
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    setCurrentUser(null)
-    window.location.href = '/login'
+    try {
+      await fetch('/api/auth/logout', { 
+        method: 'POST',
+        credentials: 'include'
+      })
+      setCurrentUser(null)
+      window.location.href = '/login'
+    } catch (err) {
+      console.error('Logout error:', err)
+      // Force logout even if request fails
+      setCurrentUser(null)
+      window.location.href = '/login'
+    }
   }
 
   const handleNavClick = (item: typeof NAV_ITEMS[0]) => {
@@ -79,7 +91,7 @@ export default function Navbar() {
               {currentUser ? (
                 <>
                   <span className="text-sm text-text">
-                    <strong>{currentUser.CustomerName}</strong>
+                    <strong>{currentUser.name}</strong> ({currentUser.role})
                   </span>
                   <button
                     onClick={handleLogout}
@@ -100,13 +112,13 @@ export default function Navbar() {
           </div>
         </div>
         
-        {/* Second Level Navbar Container */}
+        {/* Ribbon Container */}
         <div 
-          id="second-level-navbar-container"
+          id="ribbon-container"
           className="bg-overlay/80 backdrop-blur-md border-t border-highlight/20 shadow-inner rounded-b-lg -mt-2 relative z-10"
           style={{ display: 'none' }}
         >
-          {/* Content will be injected here by layouts */}
+          {/* Content will be injected here by Ribbon component */}
         </div>
       </div>
     </div>

@@ -8,7 +8,9 @@ export default function RootPage() {
 
   useEffect(() => {
     // Check if user is logged in
-    fetch('/api/auth/session')
+    fetch('/api/auth/session', {
+      credentials: 'include'
+    })
       .then(res => res.json())
       .then(data => {
         if (data.user) {

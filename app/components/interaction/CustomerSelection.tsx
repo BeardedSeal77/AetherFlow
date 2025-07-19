@@ -1,7 +1,6 @@
-// app/components/interaction/CustomerSelection.tsx
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 
 interface Customer {
   customer_id: number
@@ -57,320 +56,205 @@ export default function CustomerSelection({
   requireSite = false
 }: CustomerSelectionProps) {
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
-  const [customerSearch, setCustomerSearch] = useState('')
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
-  
   const [contacts, setContacts] = useState<Contact[]>([])
-  const [filteredContacts, setFilteredContacts] = useState<Contact[]>([])
-  const [contactSearch, setContactSearch] = useState('')
-  const [showContactDropdown, setShowContactDropdown] = useState(false)
-  
   const [sites, setSites] = useState<Site[]>([])
-  const [filteredSites, setFilteredSites] = useState<Site[]>([])
-  const [siteSearch, setSiteSearch] = useState('')
-  const [showSiteDropdown, setShowSiteDropdown] = useState(false)
-  
-  const [isLoading, setIsLoading] = useState(false)
-  
-  const customerRef = useRef<HTMLDivElement>(null)
-  const contactRef = useRef<HTMLDivElement>(null)
-  const siteRef = useRef<HTMLDivElement>(null)
+  const [loading, setLoading] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
 
-  // Load customers on mount
   useEffect(() => {
     loadCustomers()
   }, [])
 
-  // Filter customers based on search
   useEffect(() => {
-    if (customerSearch.length === 0) {
-      setFilteredCustomers(customers.slice(0, 10)) // Show first 10 by default
+    if (selectedCustomer) {
+      loadCustomerData(selectedCustomer.customer_id)
     } else {
-      const filtered = customers.filter(customer =>
-        customer.customer_name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-        customer.customer_code.toLowerCase().includes(customerSearch.toLowerCase())
-      ).slice(0, 10)
-      setFilteredCustomers(filtered)
+      setContacts([])
+      setSites([])
+      onContactSelect(null)
+      onSiteSelect(null)
     }
-  }, [customerSearch, customers])
-
-  // Filter contacts based on search
-  useEffect(() => {
-    if (contactSearch.length === 0) {
-      setFilteredContacts(contacts)
-    } else {
-      const filtered = contacts.filter(contact =>
-        contact.full_name.toLowerCase().includes(contactSearch.toLowerCase()) ||
-        (contact.job_title && contact.job_title.toLowerCase().includes(contactSearch.toLowerCase()))
-      )
-      setFilteredContacts(filtered)
-    }
-  }, [contactSearch, contacts])
-
-  // Filter sites based on search
-  useEffect(() => {
-    if (siteSearch.length === 0) {
-      setFilteredSites(sites)
-    } else {
-      const filtered = sites.filter(site =>
-        site.site_name.toLowerCase().includes(siteSearch.toLowerCase()) ||
-        site.full_address.toLowerCase().includes(siteSearch.toLowerCase())
-      )
-      setFilteredSites(filtered)
-    }
-  }, [siteSearch, sites])
-
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (customerRef.current && !customerRef.current.contains(event.target as Node)) {
-        setShowCustomerDropdown(false)
-      }
-      if (contactRef.current && !contactRef.current.contains(event.target as Node)) {
-        setShowContactDropdown(false)
-      }
-      if (siteRef.current && !siteRef.current.contains(event.target as Node)) {
-        setShowSiteDropdown(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  }, [selectedCustomer])
 
   const loadCustomers = async () => {
     try {
-      setIsLoading(true)
-      const response = await fetch('/api/hire/customers')
+      setLoading(true)
+      const response = await fetch('/api/customers', {
+        credentials: 'include'
+      })
       const data = await response.json()
-      
       if (data.success) {
-        setCustomers(data.data)
-        setFilteredCustomers(data.data.slice(0, 10))
+        setCustomers(data.customers || [])
       }
-    } catch (err) {
-      console.error('Failed to load customers:', err)
+    } catch (error) {
+      console.error('Error loading customers:', error)
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  const handleCustomerSelect = async (customer: Customer) => {
-    onCustomerSelect(customer)
-    setCustomerSearch(customer.customer_name)
-    setShowCustomerDropdown(false)
-    
-    // Reset contact and site
-    onContactSelect(null)
-    onSiteSelect(null)
-    setContactSearch('')
-    setSiteSearch('')
-    setContacts([])
-    setSites([])
-
-    // Load customer contacts and sites
+  const loadCustomerData = async (customerId: number) => {
     try {
-      const [contactsRes, sitesRes] = await Promise.all([
-        fetch(`/api/hire/customers/${customer.customer_id}/contacts`),
-        fetch(`/api/hire/customers/${customer.customer_id}/sites`)
+      setLoading(true)
+      const [contactsResponse, sitesResponse] = await Promise.all([
+        fetch(`/api/customers/${customerId}/contacts`, { credentials: 'include' }),
+        fetch(`/api/customers/${customerId}/sites`, { credentials: 'include' })
       ])
 
-      const contactsData = await contactsRes.json()
-      const sitesData = await sitesRes.json()
+      const contactsData = await contactsResponse.json()
+      const sitesData = await sitesResponse.json()
 
       if (contactsData.success) {
-        setContacts(contactsData.data)
-        setFilteredContacts(contactsData.data)
-        
-        // Auto-select primary contact if available
-        const primaryContact = contactsData.data.find((c: Contact) => c.is_primary_contact)
-        if (primaryContact) {
-          handleContactSelect(primaryContact)
-        }
+        setContacts(contactsData.contacts || [])
       }
-      
       if (sitesData.success) {
-        setSites(sitesData.data)
-        setFilteredSites(sitesData.data)
+        setSites(sitesData.sites || [])
       }
-    } catch (err) {
-      console.error('Failed to load customer details:', err)
+    } catch (error) {
+      console.error('Error loading customer data:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleContactSelect = (contact: Contact) => {
-    onContactSelect(contact)
-    setContactSearch(contact.full_name)
-    setShowContactDropdown(false)
-  }
-
-  const handleSiteSelect = (site: Site) => {
-    onSiteSelect(site)
-    setSiteSearch(site.site_name)
-    setShowSiteDropdown(false)
-  }
+  const filteredCustomers = customers.filter(customer =>
+    customer.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.customer_code.toLowerCase().includes(searchTerm.toLowerCase())
+  )
 
   return (
-    <div className="bg-surface p-6 rounded-lg">
-      <h2 className="text-lg font-medium text-text mb-4">Customer Selection</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Customer Search */}
-        <div className="relative" ref={customerRef}>
-          <label className="block text-sm font-medium text-text mb-2">
-            Customer <span className="text-red">*</span>
-          </label>
-          <input
-            type="text"
-            value={customerSearch}
-            onChange={(e) => {
-              setCustomerSearch(e.target.value)
-              setShowCustomerDropdown(true)
-            }}
-            onFocus={() => setShowCustomerDropdown(true)}
-            placeholder="Search customers..."
-            className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-            disabled={isLoading}
-          />
-          
-          {showCustomerDropdown && (
-            <div className="absolute z-50 w-full bg-surface border border-highlight-med rounded-md mt-1 max-h-60 overflow-y-auto shadow-lg">
-              {filteredCustomers.length > 0 ? (
-                filteredCustomers.map(customer => (
-                  <div
-                    key={customer.customer_id}
-                    onClick={() => handleCustomerSelect(customer)}
-                    className="p-3 hover:bg-overlay cursor-pointer border-b border-highlight-low last:border-b-0"
-                  >
-                    <div className="font-medium text-text">{customer.customer_name}</div>
-                    <div className="text-sm text-subtle">
-                      {customer.customer_code} • Credit: R{customer.credit_limit.toLocaleString()}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-3 text-subtle">No customers found</div>
+    <div className="space-y-6">
+      {/* Customer Selection */}
+      <div className="bg-surface rounded-lg border border-highlight-low p-6">
+        <h3 className="text-lg font-semibold text-gold mb-4">Customer Information</h3>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-text mb-2">
+              Search Customer *
+            </label>
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full p-3 bg-overlay border border-highlight-med rounded-md text-text focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+                placeholder="Search by customer name or code..."
+              />
+              
+              {searchTerm && (
+                <div className="max-h-48 overflow-y-auto border border-highlight-med rounded-md bg-overlay">
+                  {filteredCustomers.length > 0 ? (
+                    filteredCustomers.map((customer) => (
+                      <button
+                        key={customer.customer_id}
+                        onClick={() => {
+                          onCustomerSelect(customer)
+                          setSearchTerm('')
+                        }}
+                        className="w-full text-left p-3 hover:bg-highlight-low border-b border-highlight-low last:border-b-0"
+                      >
+                        <div className="font-medium text-text">{customer.customer_name}</div>
+                        <div className="text-sm text-subtle">{customer.customer_code}</div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="p-3 text-subtle text-center">No customers found</div>
+                  )}
+                </div>
               )}
-            </div>
-          )}
-        </div>
-
-        {/* Contact Search */}
-        <div className="relative" ref={contactRef}>
-          <label className="block text-sm font-medium text-text mb-2">
-            Contact <span className="text-red">*</span>
-          </label>
-          <input
-            type="text"
-            value={contactSearch}
-            onChange={(e) => {
-              setContactSearch(e.target.value)
-              setShowContactDropdown(true)
-            }}
-            onFocus={() => setShowContactDropdown(true)}
-            placeholder="Search contacts..."
-            className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-            disabled={!selectedCustomer}
-          />
-          
-          {showContactDropdown && selectedCustomer && (
-            <div className="absolute z-50 w-full bg-surface border border-highlight-med rounded-md mt-1 max-h-60 overflow-y-auto shadow-lg">
-              {filteredContacts.length > 0 ? (
-                filteredContacts.map(contact => (
-                  <div
-                    key={contact.contact_id}
-                    onClick={() => handleContactSelect(contact)}
-                    className="p-3 hover:bg-overlay cursor-pointer border-b border-highlight-low last:border-b-0"
-                  >
-                    <div className="font-medium text-text">{contact.full_name}</div>
-                    <div className="text-sm text-subtle">
-                      {contact.job_title && `${contact.job_title} • `}
-                      {contact.phone_number}
-                      {contact.is_primary_contact && ' • Primary'}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-3 text-subtle">No contacts found</div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Site Search */}
-        <div className="relative" ref={siteRef}>
-          <label className="block text-sm font-medium text-text mb-2">
-            {requireSite ? 'Delivery Site' : 'Site'} {requireSite && <span className="text-red">*</span>}
-          </label>
-          <input
-            type="text"
-            value={siteSearch}
-            onChange={(e) => {
-              setSiteSearch(e.target.value)
-              setShowSiteDropdown(true)
-            }}
-            onFocus={() => setShowSiteDropdown(true)}
-            placeholder="Search sites..."
-            className="w-full p-3 bg-overlay border border-highlight-med rounded text-text"
-            disabled={!selectedCustomer}
-          />
-          
-          {showSiteDropdown && selectedCustomer && (
-            <div className="absolute z-50 w-full bg-surface border border-highlight-med rounded-md mt-1 max-h-60 overflow-y-auto shadow-lg">
-              {filteredSites.length > 0 ? (
-                filteredSites.map(site => (
-                  <div
-                    key={site.site_id}
-                    onClick={() => handleSiteSelect(site)}
-                    className="p-3 hover:bg-overlay cursor-pointer border-b border-highlight-low last:border-b-0"
-                  >
-                    <div className="font-medium text-text">{site.site_name}</div>
-                    <div className="text-sm text-subtle">{site.full_address}</div>
-                    {site.site_contact_name && (
-                      <div className="text-xs text-muted">Contact: {site.site_contact_name}</div>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div className="p-3 text-subtle">No sites found</div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Selected Customer Summary */}
-      {selectedCustomer && (
-        <div className="mt-4 p-4 bg-overlay rounded">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <span className="text-subtle">Customer:</span>
-              <div className="text-text font-medium">{selectedCustomer.customer_name}</div>
-              <div className="text-subtle">{selectedCustomer.customer_code}</div>
             </div>
             
-            {selectedContact && (
-              <div>
-                <span className="text-subtle">Contact:</span>
-                <div className="text-text font-medium">{selectedContact.full_name}</div>
-                <div className="text-subtle">
-                  {selectedContact.job_title && `${selectedContact.job_title} • `}
-                  {selectedContact.phone_number}
+            {selectedCustomer && (
+              <div className="mt-2 p-3 bg-highlight-low rounded-md">
+                <div className="font-medium text-text">{selectedCustomer.customer_name}</div>
+                <div className="text-sm text-subtle">{selectedCustomer.customer_code}</div>
+                <div className="text-xs text-subtle mt-1">
+                  Credit Limit: ${selectedCustomer.credit_limit.toLocaleString()} | 
+                  Terms: {selectedCustomer.payment_terms}
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Contact Selection */}
+          <div>
+            <label className="block text-sm font-medium text-text mb-2">
+              Contact Person *
+            </label>
+            <select
+              value={selectedContact?.contact_id || ''}
+              onChange={(e) => {
+                const contactId = parseInt(e.target.value)
+                const contact = contacts.find(c => c.contact_id === contactId)
+                onContactSelect(contact || null)
+              }}
+              disabled={!selectedCustomer || loading}
+              className="w-full p-3 bg-overlay border border-highlight-med rounded-md text-text focus:border-gold focus:outline-none disabled:opacity-50"
+            >
+              <option value="">Select Contact...</option>
+              {contacts.map((contact) => (
+                <option key={contact.contact_id} value={contact.contact_id}>
+                  {contact.full_name} - {contact.job_title}
+                </option>
+              ))}
+            </select>
+            
+            {selectedContact && (
+              <div className="mt-2 p-3 bg-highlight-low rounded-md">
+                <div className="text-sm space-y-1">
+                  <div><span className="text-subtle">Phone:</span> {selectedContact.phone_number}</div>
+                  <div><span className="text-subtle">Email:</span> {selectedContact.email}</div>
+                  {selectedContact.whatsapp_number && (
+                    <div><span className="text-subtle">WhatsApp:</span> {selectedContact.whatsapp_number}</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Site Selection */}
+          <div>
+            <label className="block text-sm font-medium text-text mb-2">
+              Delivery Site {requireSite ? '*' : ''}
+            </label>
+            <select
+              value={selectedSite?.site_id || ''}
+              onChange={(e) => {
+                const siteId = parseInt(e.target.value)
+                const site = sites.find(s => s.site_id === siteId)
+                onSiteSelect(site || null)
+              }}
+              disabled={!selectedCustomer || loading}
+              className="w-full p-3 bg-overlay border border-highlight-med rounded-md text-text focus:border-gold focus:outline-none disabled:opacity-50"
+            >
+              <option value="">Select Site...</option>
+              {sites.map((site) => (
+                <option key={site.site_id} value={site.site_id}>
+                  {site.site_name} - {site.site_code}
+                </option>
+              ))}
+            </select>
             
             {selectedSite && (
-              <div>
-                <span className="text-subtle">Site:</span>
-                <div className="text-text font-medium">{selectedSite.site_name}</div>
-                <div className="text-subtle">{selectedSite.full_address}</div>
+              <div className="mt-2 p-3 bg-highlight-low rounded-md">
+                <div className="text-sm space-y-1">
+                  <div><span className="text-subtle">Address:</span> {selectedSite.full_address}</div>
+                  {selectedSite.site_contact_name && (
+                    <div><span className="text-subtle">Site Contact:</span> {selectedSite.site_contact_name}</div>
+                  )}
+                  {selectedSite.site_contact_phone && (
+                    <div><span className="text-subtle">Site Phone:</span> {selectedSite.site_contact_phone}</div>
+                  )}
+                  {selectedSite.delivery_instructions && (
+                    <div><span className="text-subtle">Instructions:</span> {selectedSite.delivery_instructions}</div>
+                  )}
+                </div>
               </div>
             )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

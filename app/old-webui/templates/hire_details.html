@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+
+{% block title %}Hire Details - {{ hire.reference_number }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0">
+                <i class="fas fa-file-contract me-2"></i>
+                Hire Details - {{ hire.reference_number }}
+            </h1>
+            <div>
+                <a href="{{ url_for('index') }}" class="btn btn-outline-secondary me-2">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                </a>
+                {% if allocation_bookings %}
+                    {% set has_unallocated = allocation_bookings|selectattr('quantity_remaining', 'gt', 0)|list|length > 0 %}
+                    {% if has_unallocated %}
+                    <a href="{{ url_for('allocation_dashboard') }}?interaction_id={{ hire.interaction_id }}" 
+                       class="btn btn-warning">
+                        <i class="fas fa-tasks me-2"></i>Allocate Equipment
+                    </a>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status and Key Information -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Hire Information</h5>
+                {{ hire.status|status_badge|safe }}
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <dl class="row">
+                            <dt class="col-sm-4">Customer:</dt>
+                            <dd class="col-sm-8">{{ hire.customer_name }}</dd>
+                            
+                            <dt class="col-sm-4">Contact:</dt>
+                            <dd class="col-sm-8">
+                                {{ hire.contact_name }}
+                                {% if hire.contact_phone %}
+                                <br><small class="text-muted">
+                                    <i class="fas fa-phone me-1"></i>{{ hire.contact_phone }}
+                                </small>
+                                {% endif %}
+                                {% if hire.contact_email %}
+                                <br><small class="text-muted">
+                                    <i class="fas fa-envelope me-1"></i>{{ hire.contact_email }}
+                                </small>
+                                {% endif %}
+                            </dd>
+                            
+                            <dt class="col-sm-4">Created By:</dt>
+                            <dd class="col-sm-8">{{ hire.created_by_name }}</dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-6">
+                        <dl class="row">
+                            <dt class="col-sm-4">Hire Period:</dt>
+                            <dd class="col-sm-8">
+                                {{ hire.hire_start_date|date_format }}
+                                {% if hire.hire_end_date %}
+                                - {{ hire.hire_end_date|date_format }}
+                                {% endif %}
+                            </dd>
+                            
+                            <dt class="col-sm-4">Delivery:</dt>
+                            <dd class="col-sm-8">
+                                {{ hire.delivery_date|date_format }}
+                                {% if hire.delivery_time %}
+                                at {{ hire.delivery_time|time_format }}
+                                {% endif %}
+                            </dd>
+                            
+                            <dt class="col-sm-4">Created:</dt>
+                            <dd class="col-sm-8">{{ hire.created_at|date_format }}</dd>
+                        </dl>
+                    </div>
+                </div>
+                
+                {% if hire.site_name %}
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <dt>Delivery Site:</dt>
+                        <dd>
+                            <strong>{{ hire.site_name }}</strong><br>
+                            <small class="text-muted">{{ hire.site_address }}</small>
+                        </dd>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if hire.special_instructions %}
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <dt>Special Instructions:</dt>
+                        <dd class="alert alert-info mb-0">{{ hire.special_instructions }}</dd>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if hire.notes %}
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <dt>Internal Notes:</dt>
+                        <dd class="text-muted">{{ hire.notes }}</dd>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Allocation Status -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Allocation Status</h5>
+            </div>
+            <div class="card-body">
+                {% if allocation_bookings %}
+                    {% for booking in allocation_bookings %}
+                    <div class="mb-3 p-3 border rounded" id="booking-{{ booking.equipment_generic_booking_id }}">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h6 class="mb-1">{{ booking.quantity_booked }}x {{ booking.equipment_type_name }}</h6>
+                                <small class="text-muted">
+                                    {% if booking.quantity_allocated > 0 %}
+                                        {{ booking.quantity_allocated }} allocated, {{ booking.quantity_remaining }} remaining
+                                    {% else %}
+                                        Not allocated yet
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <div>
+                                {% if booking.quantity_remaining > 0 %}
+                                <button class="btn btn-sm btn-primary" onclick="toggleEquipmentList({{ booking.equipment_generic_booking_id }})">
+                                    <i class="fas fa-plus me-1"></i>Allocate
+                                </button>
+                                {% else %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-check me-1"></i>Complete
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        {% if booking.quantity_remaining > 0 and available_equipment.get(booking.equipment_generic_booking_id) %}
+                        <div id="equipment-list-{{ booking.equipment_generic_booking_id }}" class="mt-3" style="display: none;">
+                            <h6 class="mb-2">Available Equipment (need {{ booking.quantity_remaining }}):</h6>
+                            <div class="row">
+                                {% for unit in available_equipment[booking.equipment_generic_booking_id] %}
+                                    {% if unit.is_available %}
+                                    <div class="col-md-6 mb-2">
+                                        <div class="card equipment-unit" onclick="selectEquipment({{ unit.equipment_id }}, {{ booking.equipment_generic_booking_id }})">
+                                            <div class="card-body p-2">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <strong>{{ unit.equipment_code }}</strong>
+                                                        <br><small class="text-muted">{{ unit.equipment_name }}</small>
+                                                    </div>
+                                                    <span class="badge bg-{{ 'success' if unit.condition_status == 'good' else 'warning' }}">
+                                                        {{ unit.condition_status }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            <div class="mt-3">
+                                <button class="btn btn-success me-2" onclick="allocateSelectedEquipment({{ booking.equipment_generic_booking_id }})">
+                                    <i class="fas fa-check me-1"></i>Allocate Selected
+                                </button>
+                                <button class="btn btn-secondary" onclick="toggleEquipmentList({{ booking.equipment_generic_booking_id }})">
+                                    <i class="fas fa-times me-1"></i>Cancel
+                                </button>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <div class="text-center text-muted">
+                    <i class="fas fa-info-circle fa-2x mb-2"></i>
+                    <p>No equipment bookings found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Equipment and Accessories -->
+<div class="row">
+    <!-- Equipment List -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-tools me-2"></i>Equipment
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if equipment_list %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Equipment Type</th>
+                                <th>Quantity Booked</th>
+                                <th>Quantity Allocated</th>
+                                <th>Status</th>
+                                <th>Hire Period</th>
+                                <th>Allocated Units</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for equipment in equipment_list %}
+                            <tr>
+                                <td>
+                                    <strong>{{ equipment.type_name }}</strong><br>
+                                    <small class="text-muted">{{ equipment.type_code }}</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary">{{ equipment.quantity_booked }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-success">{{ equipment.quantity_allocated }}</span>
+                                </td>
+                                <td>
+                                    {{ equipment.booking_status|status_badge|safe }}
+                                </td>
+                                <td>
+                                    {{ equipment.hire_start_date|date_format }}
+                                    {% if equipment.hire_end_date %}
+                                    <br><small class="text-muted">to {{ equipment.hire_end_date|date_format }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if equipment.allocated_equipment and equipment.allocated_equipment != '[]' %}
+                                    {% set allocated_equipment = equipment.allocated_equipment|fromjson %}
+                                    {% for unit in allocated_equipment %}
+                                    <div class="mb-1">
+                                        <span class="badge bg-light text-dark">{{ unit.asset_code }}</span>
+                                        <small class="text-muted">{{ unit.model }} ({{ unit.condition }})</small>
+                                        <br><small class="text-muted">Status: {{ unit.allocation_status|title }}</small>
+                                    </div>
+                                    {% endfor %}
+                                    {% else %}
+                                    <span class="text-muted">No specific units allocated</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-tools fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No equipment found for this hire</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Accessories List -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-puzzle-piece me-2"></i>Accessories
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if accessories_list %}
+                <div style="max-height: 400px; overflow-y: auto;">
+                    {% for accessory in accessories_list %}
+                    <div class="d-flex justify-content-between align-items-start mb-3 p-2 border rounded
+                                {% if accessory.accessory_type == 'default' %}bg-light{% endif %}">
+                        <div class="flex-grow-1">
+                            <strong>{{ accessory.accessory_name }}</strong>
+                            <br><small class="text-muted">{{ accessory.accessory_code }}</small>
+                            {% if accessory.equipment_type_name %}
+                            <br><small class="text-primary">For: {{ accessory.equipment_type_name }}</small>
+                            {% endif %}
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold">
+                                {{ accessory.quantity }} {{ accessory.unit_of_measure }}
+                            </div>
+                            <small class="text-muted">{{ accessory.unit_rate|currency }}</small>
+                            {% if accessory.accessory_type == 'default' %}
+                            <br><span class="badge bg-secondary">Default</span>
+                            {% elif accessory.accessory_type == 'optional' %}
+                            <br><span class="badge bg-info">Optional</span>
+                            {% else %}
+                            <br><span class="badge bg-primary">Additional</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <!-- Accessories Total -->
+                <div class="border-top pt-3 mt-3">
+                    <div class="d-flex justify-content-between">
+                        <strong>Total Accessories:</strong>
+                        <strong>
+                            {% set total = accessories_list|sum(attribute='total_amount') %}
+                            {{ total|currency }}
+                        </strong>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-puzzle-piece fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No accessories for this hire</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <button type="button" class="btn btn-outline-info" onclick="window.print()">
+                            <i class="fas fa-print me-2"></i>Print Hire Details
+                        </button>
+                    </div>
+                    <div>
+                        {% if allocation_status and not allocation_status.is_fully_allocated %}
+                        <a href="{{ url_for('allocation_dashboard') }}?interaction_id={{ hire.interaction_id }}" 
+                           class="btn btn-warning me-2">
+                            <i class="fas fa-tasks me-2"></i>Continue Allocation
+                        </a>
+                        {% endif %}
+                        <button type="button" class="btn btn-outline-secondary me-2">
+                            <i class="fas fa-edit me-2"></i>Edit Hire
+                        </button>
+                        <button type="button" class="btn btn-danger">
+                            <i class="fas fa-times me-2"></i>Cancel Hire
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedEquipment = {};
+
+function toggleEquipmentList(bookingId) {
+    const equipmentList = document.getElementById('equipment-list-' + bookingId);
+    if (equipmentList.style.display === 'none') {
+        equipmentList.style.display = 'block';
+    } else {
+        equipmentList.style.display = 'none';
+    }
+}
+
+function selectEquipment(equipmentId, bookingId) {
+    const equipmentCard = event.target.closest('.equipment-unit');
+    
+    if (!selectedEquipment[bookingId]) {
+        selectedEquipment[bookingId] = [];
+    }
+    
+    if (equipmentCard.classList.contains('selected')) {
+        // Deselect
+        equipmentCard.classList.remove('selected');
+        selectedEquipment[bookingId] = selectedEquipment[bookingId].filter(id => id !== equipmentId);
+    } else {
+        // Select
+        equipmentCard.classList.add('selected');
+        selectedEquipment[bookingId].push(equipmentId);
+    }
+}
+
+function allocateSelectedEquipment(bookingId) {
+    const selected = selectedEquipment[bookingId] || [];
+    
+    if (selected.length === 0) {
+        alert('Please select at least one equipment unit to allocate.');
+        return;
+    }
+    
+    // Send allocation request
+    fetch('/api/allocation/allocate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            booking_id: bookingId,
+            equipment_ids: selected
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Equipment allocated successfully!');
+            location.reload();
+        } else {
+            alert('Error allocating equipment: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error allocating equipment: ' + error.message);
+    });
+}
+
+$(document).ready(function() {
+    // Add print styles
+    $('<style>')
+        .prop('type', 'text/css')
+        .html('@media print { .btn, .navbar, footer { display: none !important; } }')
+        .appendTo('head');
+    
+    // CSS for equipment selection
+    const style = document.createElement('style');
+    style.textContent = `
+    .equipment-unit {
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .equipment-unit:hover {
+        background-color: #f8f9fa;
+        border-color: #0d6efd;
+    }
+
+    .equipment-unit.selected {
+        background-color: #e7f1ff;
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+    }
+    `;
+    document.head.appendChild(style);
+});
+</script>
+{% endblock %}
